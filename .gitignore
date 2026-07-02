@@ -10,6 +10,9 @@ firmware/.pio/
 __pycache__/
 *.pyc
 
+# Claude Code (settings phiên làm việc, không đưa lên repo)
+.claude/
+
 # OS / editor
 .DS_Store
 Thumbs.db
