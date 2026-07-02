@@ -56,7 +56,7 @@ const STYLE = `<style>
 .node{position:absolute;transform:translate(-50%,-50%);text-align:center;width:104px}
 .node .disc{width:62px;height:62px;border-radius:18px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;
   line-height:0;background:var(--panel-2);border:1px solid var(--line);color:var(--faint);position:relative;transition:.3s}
-.node .disc svg{width:28px;height:28px;display:block}
+.node .disc svg{width:28px;height:28px;display:block;position:relative;top:0;left:0}
 .node.on .disc{color:var(--nc);border-color:color-mix(in srgb,var(--nc) 45%,transparent);
   background:color-mix(in srgb,var(--nc) 12%,var(--panel-2));box-shadow:0 0 22px -8px var(--nc)}
 .node .nlabel{font-size:11.5px;color:var(--faint);font-weight:500}
@@ -69,7 +69,7 @@ const STYLE = `<style>
 .n-hub{left:50%;top:50%;width:auto}
 .hub-core{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;line-height:0;
   background:var(--panel);border:1px solid var(--line-strong);color:var(--muted);box-shadow:var(--shadow)}
-.hub-core svg{width:18px;height:18px;display:block}
+.hub-core svg{width:18px;height:18px;display:block;position:relative;top:0;left:0}
 .seg{display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:5px;margin-bottom:20px;max-width:460px}
 .seg button{flex:1;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:500;
   font-size:14px;padding:10px 8px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.18s}
