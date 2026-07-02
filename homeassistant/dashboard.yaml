@@ -1,0 +1,91 @@
+# ============================================================================
+#  dashboard.yaml - Lovelace dashboard cho Inverter Bridge (Solis)
+# ============================================================================
+#  Cach dung:
+#   HA -> menu ba cham goc phai dashboard -> "Edit Dashboard" -> lai ba cham
+#   -> "Raw configuration editor" -> DAN toan bo file nay -> Save.
+#  (Yeu cau entity ten sensor.ib_* : neu chua co, xoa device "Inverter Bridge"
+#   trong Settings->Devices de no tao lai voi ten moi - xem homeassistant/README.md)
+# ============================================================================
+title: Solar
+views:
+  - title: Biến tần Solis
+    path: solar
+    icon: mdi:solar-power
+    cards:
+      - type: gauge
+        entity: sensor.ib_battery_soc
+        name: Pin (SOC)
+        min: 0
+        max: 100
+        needle: true
+        severity:
+          green: 50
+          yellow: 20
+          red: 0
+
+      - type: glance
+        title: Công suất tức thời
+        columns: 2
+        entities:
+          - entity: sensor.ib_pv_power
+            name: Mặt trời (PV)
+          - entity: sensor.ib_grid_power
+            name: Lưới (+mua/−bán)
+          - entity: sensor.ib_house_load_power
+            name: Tải nhà
+          - entity: sensor.ib_battery_power
+            name: Pin (+sạc/−xả)
+
+      - type: history-graph
+        title: Công suất 24h
+        hours_to_show: 24
+        entities:
+          - entity: sensor.ib_pv_power
+            name: PV
+          - entity: sensor.ib_house_load_power
+            name: Tải
+          - entity: sensor.ib_grid_power
+            name: Lưới
+          - entity: sensor.ib_battery_power
+            name: Pin
+
+      - type: gauge
+        entity: sensor.ib_inverter_temperature
+        name: Nhiệt độ biến tần
+        min: 0
+        max: 80
+        severity:
+          green: 0
+          yellow: 50
+          red: 65
+
+      - type: entities
+        title: Chi tiết
+        entities:
+          - entity: sensor.ib_battery_voltage
+            name: Điện áp pin
+          - entity: sensor.ib_battery_current
+            name: Dòng pin
+          - entity: sensor.ib_battery_soh
+            name: Sức khỏe pin (SOH)
+          - entity: sensor.ib_pv1_voltage
+            name: PV1
+          - entity: sensor.ib_pv2_voltage
+            name: PV2
+          - entity: sensor.ib_meter_frequency
+            name: Tần số lưới
+          - entity: sensor.ib_inverter_ac_power
+            name: Công suất AC
+
+      - type: entities
+        title: Năng lượng
+        entities:
+          - entity: sensor.ib_daily_generation
+            name: PV hôm nay
+          - entity: sensor.ib_total_generation
+            name: PV tổng
+          - entity: sensor.ib_total_imported
+            name: Mua lưới tổng
+          - entity: sensor.ib_total_battery_charge
+            name: Sạc pin tổng

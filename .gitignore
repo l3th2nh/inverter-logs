@@ -1,0 +1,16 @@
+# Bí mật (KHÔNG bao giờ commit)
+**/secrets.h
+firmware/src/secrets.h
+
+# PlatformIO
+firmware/.pio/
+.pio/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp

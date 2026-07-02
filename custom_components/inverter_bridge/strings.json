@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Inverter Bridge",
+        "description": "Thêm panel \"Hệ điện mặt trời\" để giám sát biến tần và cấu hình thông báo/tự động hóa."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Đã cấu hình rồi."
+    }
+  }
+}

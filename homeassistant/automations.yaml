@@ -1,0 +1,92 @@
+# ============================================================================
+#  automations.yaml - Kich ban tu dong mau cho Inverter Bridge (Solis)
+# ============================================================================
+#  Hien tai ban CHUA co thiet bi dieu khien -> cac automation nay dung
+#  THONG BAO (persistent_notification + comment san cho app dien thoai).
+#  Khi co thiet bi that (dieu hoa/cong tac) -> bo comment doan "service:" tuong ung.
+#
+#  Cach dung:
+#   - HA -> Settings -> Automations & scenes -> tao moi -> ba cham -> "Edit in YAML"
+#     -> dan tung block; HOAC dan vao file automations.yaml cua HA config.
+#
+#  !! LUU Y DAU cua grid_power: dinh nghia hien tai la "+ = mua dien luoi, - = ban ra".
+#     PHAI kiem chung lai voi so lieu THAT cua Solis (so tren SolisCloud/LCD). Neu
+#     nguoc dau -> doi dieu kien "above/below" cho phu hop.
+# ============================================================================
+
+- id: inverter_grid_import_high
+  alias: "Solis - Dang mua dien luoi cao -> canh bao (tat tai phu)"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.ib_grid_power
+      above: 300                      # mua > 300W
+      for: "00:02:00"
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "Đang mua điện lưới cao"
+        message: >-
+          Đang lấy {{ states('sensor.ib_grid_power') }}W từ lưới.
+          Cân nhắc tắt bớt tải (điều hòa phòng trống, bình nóng lạnh).
+    # --- Khi co thiet bi that, bo comment: ---
+    # - service: switch.turn_off
+    #   target:
+    #     entity_id:
+    #       - switch.dieu_hoa_phong_trong
+    #       - switch.binh_nong_lanh
+
+- id: inverter_pv_surplus
+  alias: "Solis - Du dien mat troi (ban ra) -> co the bat thiet bi"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.ib_grid_power
+      below: -800                     # ban ra > 800W
+      for: "00:05:00"
+  condition:
+    - condition: numeric_state
+      entity_id: sensor.ib_battery_soc
+      above: 90                       # pin gan day moi xa sang tai
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "Dư điện mặt trời"
+        message: >-
+          Đang bán {{ (states('sensor.ib_grid_power') | float * -1) | round(0) }}W ra lưới,
+          pin {{ states('sensor.ib_battery_soc') }}%. Có thể bật điều hòa cho mát.
+    # --- Khi co dieu hoa that: ---
+    # - service: climate.turn_on
+    #   target:
+    #     entity_id: climate.phong_khach
+
+- id: inverter_overheat
+  alias: "Solis - Bien tan qua nong -> canh bao"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.ib_inverter_temperature
+      above: 65
+      for: "00:01:00"
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "Biến tần nóng"
+        message: "Nhiệt độ biến tần {{ states('sensor.ib_inverter_temperature') }}°C."
+
+- id: inverter_battery_low
+  alias: "Solis - Pin yeu -> canh bao"
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.ib_battery_soc
+      below: 20
+      for: "00:02:00"
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "Pin yếu"
+        message: "SOC pin còn {{ states('sensor.ib_battery_soc') }}%."
+
+# ============================================================================
+#  Ghi chu: de gui thong bao ra DIEN THOAI (thay persistent_notification):
+#    - service: notify.mobile_app_<ten_dien_thoai>
+#      data: { title: "...", message: "..." }
+#  (Cai app Home Assistant tren dien thoai + dang nhap -> co service notify.mobile_app_*)
+# ============================================================================
