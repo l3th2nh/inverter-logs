@@ -33,7 +33,7 @@ const STYLE = `<style>
 .icon-btn svg{width:20px;height:20px}
 @keyframes pulse{50%{opacity:.35}}
 .hero{background:linear-gradient(180deg,var(--bg-2),var(--panel));border:1px solid var(--line);border-radius:22px;
-  padding:20px 20px 8px;box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden;position:relative}
+  padding:20px 20px 24px;box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden;position:relative}
 .hero-head{display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap}
 .grid-badge{display:inline-flex;align-items:center;gap:9px;padding:9px 15px;border-radius:14px;font-weight:600;font-size:14.5px;
   letter-spacing:-.01em;border:1px solid var(--line-strong);background:var(--panel-2);color:var(--muted);transition:.3s}
@@ -48,7 +48,7 @@ const STYLE = `<style>
 .grid-badge.exporting .bdot{background:var(--grid-out);box-shadow:0 0 10px var(--grid-out)}
 .grid-badge.self .bdot{background:var(--batt);box-shadow:0 0 10px var(--batt)}
 .hero-head .refreshed{margin-left:auto;font-size:11.5px;color:var(--faint);font-family:'JetBrains Mono',monospace}
-.flow-wrap{position:relative;width:100%;height:300px;margin:4px auto 0;max-width:520px}
+.flow-wrap{position:relative;width:100%;height:320px;margin:8px auto 0;max-width:520px}
 .flow-wrap svg{position:absolute;inset:0;width:100%;height:100%}
 .edge{fill:none;stroke:var(--line-strong);stroke-width:2.5;stroke-linecap:round;vector-effect:non-scaling-stroke;opacity:.55;transition:opacity .3s}
 .edge.active{stroke-dasharray:5 9;animation:dash 1s linear infinite;opacity:1}
@@ -64,7 +64,8 @@ const STYLE = `<style>
 .node .nsub{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--faint);margin-top:1px}
 .node .nmeta{position:absolute;top:calc(100% + 8px);left:0;right:0}
 .n-grid .disc,.n-batt .disc{margin-bottom:0}
-.n-pv{left:50%;top:15%;--nc:var(--solar)}
+.n-pv .disc{margin:8px auto 0}
+.n-pv{left:50%;top:19%;--nc:var(--solar)}
 .n-grid{left:15%;top:50%;--nc:var(--grid-in)}
 .n-batt{left:85%;top:50%;--nc:var(--batt)}
 .n-load{left:50%;top:85%;--nc:var(--load)}
@@ -72,14 +73,6 @@ const STYLE = `<style>
 .hub-core{width:36px;height:36px;border-radius:11px;margin:0 auto;display:flex;align-items:center;justify-content:center;line-height:0;
   background:var(--panel);border:1px solid var(--line-strong);color:var(--muted);box-shadow:var(--shadow)}
 .hub-core svg{width:18px;height:18px;display:block;position:relative;top:0;left:0}
-.flow-arrow{position:absolute;transform:translate(-50%,-50%) rotate(var(--rot,0deg));display:none;line-height:0;z-index:2;
-  filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))}
-.flow-arrow.show{display:block}
-.flow-arrow svg{width:15px;height:15px;display:block}
-#a-pv{left:50%;top:32.5%}
-#a-load{left:50%;top:67.5%}
-#a-grid{left:32.5%;top:50%}
-#a-batt{left:67.5%;top:50%}
 .seg{display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:5px;margin-bottom:20px;max-width:460px}
 .seg button{flex:1;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:500;
   font-size:14px;padding:10px 8px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.18s}
@@ -236,7 +229,7 @@ select.sel:focus,.num:focus-within{border-color:var(--grid-out)}
 .toast .t-ic svg{width:19px;height:19px}
 .toast .t-t{font-weight:600;font-size:13.5px}
 .toast .t-m{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.45}
-@media (max-width:560px){.wrap{padding:14px 12px 80px}.flow-wrap{height:280px}.node{width:88px}.n-hub{width:auto}.seg{max-width:none}.modal{padding:20px}.pick.cols2{grid-template-columns:1fr}}
+@media (max-width:560px){.wrap{padding:14px 12px 80px}.flow-wrap{height:300px}.node{width:88px}.n-hub{width:auto}.seg{max-width:none}.modal{padding:20px}.pick.cols2{grid-template-columns:1fr}}
 </style>`;
 
 const SHELL = `
@@ -258,15 +251,11 @@ const SHELL = `
         <line class="edge" id="e-batt" x1="53" y1="50" x2="82" y2="50"></line>
         <line class="edge" id="e-load" x1="50" y1="53" x2="50" y2="82"></line>
       </svg>
-      <div class="node n-pv" id="nodePv"><div class="disc"></div><div class="nlabel">Điện mặt trời</div><div class="nval" id="vPv">– W</div></div>
+      <div class="node n-pv" id="nodePv"><div class="nlabel">Điện mặt trời</div><div class="nval" id="vPv">– W</div><div class="disc"></div></div>
       <div class="node n-grid" id="nodeGrid"><div class="disc"></div><div class="nmeta"><div class="nlabel">Lưới điện</div><div class="nval" id="vGrid">– W</div><div class="nsub" id="vGridSub"></div></div></div>
       <div class="node n-batt" id="nodeBatt"><div class="disc"></div><div class="nmeta"><div class="nlabel">Pin lưu trữ</div><div class="nval" id="vBatt">– %</div><div class="nsub" id="vBattSub"></div></div></div>
       <div class="node n-load" id="nodeLoad"><div class="disc"></div><div class="nlabel">Tải trong nhà</div><div class="nval" id="vLoad">– W</div></div>
       <div class="node n-hub"><div class="hub-core" id="hubCore"></div></div>
-      <div class="flow-arrow" id="a-pv"></div>
-      <div class="flow-arrow" id="a-grid"></div>
-      <div class="flow-arrow" id="a-batt"></div>
-      <div class="flow-arrow" id="a-load"></div>
     </div>
   </div>
   <div class="seg" id="seg">
@@ -481,9 +470,6 @@ class SolarInverterPanel extends HTMLElement {
       if(active){ el.style.stroke=color; el.style.animationDirection=dir;
         const speed=Math.max(.5,Math.min(1.6,1.4-Math.min(Math.abs(mag||0),3000)/3000)); el.style.animationDuration=speed.toFixed(2)+'s';
       } else el.style.stroke=''; }
-    // Mui ten chi huong dong chay (chevron base huong PHAI = 0deg).
-    function arrow(id,show,rot,color){ const el=g(id); el.classList.toggle('show',!!show);
-      if(show){ el.style.setProperty('--rot',rot+'deg'); el.style.color=color; } }
     function renderHero(){
       const r=readings();
       const pvOn=r.pv!=null&&r.pv>20;
@@ -506,16 +492,6 @@ class SolarInverterPanel extends HTMLElement {
       if(r.batt!=null&&Math.abs(r.batt)>15) edge('e-batt',true,'var(--batt)',r.batt>0?'normal':'reverse',r.batt); else edge('e-batt',false);
       if(importing) edge('e-grid',true,'var(--grid-in)','reverse',gi);
       else if(exporting) edge('e-grid',true,'var(--grid-out)','normal',gi); else edge('e-grid',false);
-      // Mui ten huong dong chay: PV/tai luon xuong (90); pin: sac->phai(0)/xa->trai(180);
-      // luoi: nhap->phai(0)/ban->trai(180).
-      arrow('a-pv', pvOn, 90, 'var(--solar)');
-      arrow('a-load', r.load!=null&&r.load>20, 90, 'var(--load)');
-      if(r.batt!=null&&r.batt>15) arrow('a-batt',true,0,'var(--batt)');
-      else if(r.batt!=null&&r.batt<-15) arrow('a-batt',true,180,'var(--batt)');
-      else arrow('a-batt',false);
-      if(importing) arrow('a-grid',true,0,'var(--grid-in)');
-      else if(exporting) arrow('a-grid',true,180,'var(--grid-out)');
-      else arrow('a-grid',false);
       const badge=g('gridBadge'), txt=g('gridBadgeTxt'); badge.className='grid-badge';
       if(gi==null) txt.textContent='Chưa có dữ liệu lưới';
       else if(importing){ badge.classList.add('importing'); txt.innerHTML='ĐANG LẤY LƯỚI · <b>'+fmtW(gi)+'</b>'; }
@@ -768,8 +744,6 @@ class SolarInverterPanel extends HTMLElement {
       root.querySelector('#nodeBatt .disc').innerHTML=triIcon('battery_below');
       root.querySelector('#nodeLoad .disc').innerHTML=triIcon('load_above');
       g('hubCore').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5 5.5 13h5l-1.5 8.5L18.5 11h-5z"/></svg>';
-      const CHEVRON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
-      ['a-pv','a-grid','a-batt','a-load'].forEach(id=>g(id).innerHTML=CHEVRON);
       g('notifHeadIc').innerHTML=icon('bell');
       root.querySelector('.notif-preview .np-ic').innerHTML=icon('bell');
       qsa('.hint-box .hb-ic').forEach(e=>e.innerHTML=icon('info'));
