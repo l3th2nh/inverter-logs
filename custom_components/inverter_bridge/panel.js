@@ -372,7 +372,7 @@ function icon(n){
 function triIcon(k){
   const A='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">';
   const sun=A+'<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.5 5.5l1.4 1.4M17.1 17.1l1.4 1.4M18.5 5.5l-1.4 1.4M5.5 18.5l1.4-1.4"/></svg>';
-  const grid=A+'<path d="M9 2.6v4.4M15 2.6v4.4"/><path d="M6.5 7h11v3.4a5.5 5.5 0 0 1-11 0z"/><path d="M12 15.9v5.5"/></svg>';
+  const grid=A+'<path d="M7 21 10.5 4h3L17 21"/><path d="M5.5 21h4M14.5 21h4"/><path d="M12 4V2"/><path d="M6 7h12M8 10h8"/><path d="M9.6 13l4.8 4M14.4 13l-4.8 4"/></svg>';
   const batt=A+'<rect x="7" y="6" width="10" height="15.4" rx="2.2"/><path d="M9.8 2.6h4.4v3.4H9.8z"/><path d="M12.7 9.4 10.4 13.3h3.1l-2.2 3.9" stroke-width="1.4"/></svg>';
   const load=A+'<path d="M3.6 11.3 12 4l8.4 7.3"/><path d="M5.9 10.2v9.3h12.2v-9.3"/><path d="M10 19.5V15h4v4.5"/></svg>';
   return { grid_import_start:grid, grid_import_above:grid, battery_below:batt, pv_below:sun, load_above:load }[k]||grid;
