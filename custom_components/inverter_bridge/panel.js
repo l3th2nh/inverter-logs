@@ -67,9 +67,17 @@ const STYLE = `<style>
 .n-batt{left:85%;top:50%;--nc:var(--batt)}
 .n-load{left:50%;top:85%;--nc:var(--load)}
 .n-hub{left:50%;top:50%;width:auto}
-.hub-core{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;line-height:0;
+.hub-core{width:36px;height:36px;border-radius:11px;margin:0 auto;display:flex;align-items:center;justify-content:center;line-height:0;
   background:var(--panel);border:1px solid var(--line-strong);color:var(--muted);box-shadow:var(--shadow)}
 .hub-core svg{width:18px;height:18px;display:block;position:relative;top:0;left:0}
+.flow-arrow{position:absolute;transform:translate(-50%,-50%) rotate(var(--rot,0deg));display:none;line-height:0;z-index:2;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))}
+.flow-arrow.show{display:block}
+.flow-arrow svg{width:15px;height:15px;display:block}
+#a-pv{left:50%;top:31%}
+#a-load{left:50%;top:69%}
+#a-grid{left:32%;top:50%}
+#a-batt{left:68%;top:50%}
 .seg{display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:5px;margin-bottom:20px;max-width:460px}
 .seg button{flex:1;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:500;
   font-size:14px;padding:10px 8px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.18s}
@@ -226,7 +234,7 @@ select.sel:focus,.num:focus-within{border-color:var(--grid-out)}
 .toast .t-ic svg{width:19px;height:19px}
 .toast .t-t{font-weight:600;font-size:13.5px}
 .toast .t-m{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.45}
-@media (max-width:560px){.wrap{padding:14px 12px 80px}.flow-wrap{height:280px}.node{width:88px}.seg{max-width:none}.modal{padding:20px}.pick.cols2{grid-template-columns:1fr}}
+@media (max-width:560px){.wrap{padding:14px 12px 80px}.flow-wrap{height:280px}.node{width:88px}.n-hub{width:auto}.seg{max-width:none}.modal{padding:20px}.pick.cols2{grid-template-columns:1fr}}
 </style>`;
 
 const SHELL = `
@@ -253,6 +261,10 @@ const SHELL = `
       <div class="node n-batt" id="nodeBatt"><div class="disc"></div><div class="nlabel">Pin lưu trữ</div><div class="nval" id="vBatt">– %</div><div class="nsub" id="vBattSub"></div></div>
       <div class="node n-load" id="nodeLoad"><div class="disc"></div><div class="nlabel">Tải trong nhà</div><div class="nval" id="vLoad">– W</div></div>
       <div class="node n-hub"><div class="hub-core" id="hubCore"></div></div>
+      <div class="flow-arrow" id="a-pv"></div>
+      <div class="flow-arrow" id="a-grid"></div>
+      <div class="flow-arrow" id="a-batt"></div>
+      <div class="flow-arrow" id="a-load"></div>
     </div>
   </div>
   <div class="seg" id="seg">
@@ -467,6 +479,9 @@ class SolarInverterPanel extends HTMLElement {
       if(active){ el.style.stroke=color; el.style.animationDirection=dir;
         const speed=Math.max(.5,Math.min(1.6,1.4-Math.min(Math.abs(mag||0),3000)/3000)); el.style.animationDuration=speed.toFixed(2)+'s';
       } else el.style.stroke=''; }
+    // Mui ten chi huong dong chay (chevron base huong PHAI = 0deg).
+    function arrow(id,show,rot,color){ const el=g(id); el.classList.toggle('show',!!show);
+      if(show){ el.style.setProperty('--rot',rot+'deg'); el.style.color=color; } }
     function renderHero(){
       const r=readings();
       const pvOn=r.pv!=null&&r.pv>20;
@@ -489,6 +504,16 @@ class SolarInverterPanel extends HTMLElement {
       if(r.batt!=null&&Math.abs(r.batt)>15) edge('e-batt',true,'var(--batt)',r.batt>0?'normal':'reverse',r.batt); else edge('e-batt',false);
       if(importing) edge('e-grid',true,'var(--grid-in)','reverse',gi);
       else if(exporting) edge('e-grid',true,'var(--grid-out)','normal',gi); else edge('e-grid',false);
+      // Mui ten huong dong chay: PV/tai luon xuong (90); pin: sac->phai(0)/xa->trai(180);
+      // luoi: nhap->phai(0)/ban->trai(180).
+      arrow('a-pv', pvOn, 90, 'var(--solar)');
+      arrow('a-load', r.load!=null&&r.load>20, 90, 'var(--load)');
+      if(r.batt!=null&&r.batt>15) arrow('a-batt',true,0,'var(--batt)');
+      else if(r.batt!=null&&r.batt<-15) arrow('a-batt',true,180,'var(--batt)');
+      else arrow('a-batt',false);
+      if(importing) arrow('a-grid',true,0,'var(--grid-in)');
+      else if(exporting) arrow('a-grid',true,180,'var(--grid-out)');
+      else arrow('a-grid',false);
       const badge=g('gridBadge'), txt=g('gridBadgeTxt'); badge.className='grid-badge';
       if(gi==null) txt.textContent='Chưa có dữ liệu lưới';
       else if(importing){ badge.classList.add('importing'); txt.innerHTML='ĐANG LẤY LƯỚI · <b>'+fmtW(gi)+'</b>'; }
@@ -741,6 +766,8 @@ class SolarInverterPanel extends HTMLElement {
       root.querySelector('#nodeBatt .disc').innerHTML=triIcon('battery_below');
       root.querySelector('#nodeLoad .disc').innerHTML=triIcon('load_above');
       g('hubCore').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5 5.5 13h5l-1.5 8.5L18.5 11h-5z"/></svg>';
+      const CHEVRON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+      ['a-pv','a-grid','a-batt','a-load'].forEach(id=>g(id).innerHTML=CHEVRON);
       g('notifHeadIc').innerHTML=icon('bell');
       root.querySelector('.notif-preview .np-ic').innerHTML=icon('bell');
       qsa('.hint-box .hb-ic').forEach(e=>e.innerHTML=icon('info'));
