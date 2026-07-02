@@ -62,6 +62,8 @@ const STYLE = `<style>
 .node .nlabel{font-size:11.5px;color:var(--faint);font-weight:500}
 .node .nval{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:15px;color:var(--text);margin-top:1px;letter-spacing:-.02em}
 .node .nsub{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--faint);margin-top:1px}
+.node .nmeta{position:absolute;top:calc(100% + 8px);left:0;right:0}
+.n-grid .disc,.n-batt .disc{margin-bottom:0}
 .n-pv{left:50%;top:15%;--nc:var(--solar)}
 .n-grid{left:15%;top:50%;--nc:var(--grid-in)}
 .n-batt{left:85%;top:50%;--nc:var(--batt)}
@@ -74,10 +76,10 @@ const STYLE = `<style>
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))}
 .flow-arrow.show{display:block}
 .flow-arrow svg{width:15px;height:15px;display:block}
-#a-pv{left:50%;top:31%}
-#a-load{left:50%;top:69%}
-#a-grid{left:32%;top:50%}
-#a-batt{left:68%;top:50%}
+#a-pv{left:50%;top:32.5%}
+#a-load{left:50%;top:67.5%}
+#a-grid{left:32.5%;top:50%}
+#a-batt{left:67.5%;top:50%}
 .seg{display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:5px;margin-bottom:20px;max-width:460px}
 .seg button{flex:1;border:none;background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-weight:500;
   font-size:14px;padding:10px 8px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.18s}
@@ -257,8 +259,8 @@ const SHELL = `
         <line class="edge" id="e-load" x1="50" y1="53" x2="50" y2="82"></line>
       </svg>
       <div class="node n-pv" id="nodePv"><div class="disc"></div><div class="nlabel">Điện mặt trời</div><div class="nval" id="vPv">– W</div></div>
-      <div class="node n-grid" id="nodeGrid"><div class="disc"></div><div class="nlabel">Lưới điện</div><div class="nval" id="vGrid">– W</div><div class="nsub" id="vGridSub"></div></div>
-      <div class="node n-batt" id="nodeBatt"><div class="disc"></div><div class="nlabel">Pin lưu trữ</div><div class="nval" id="vBatt">– %</div><div class="nsub" id="vBattSub"></div></div>
+      <div class="node n-grid" id="nodeGrid"><div class="disc"></div><div class="nmeta"><div class="nlabel">Lưới điện</div><div class="nval" id="vGrid">– W</div><div class="nsub" id="vGridSub"></div></div></div>
+      <div class="node n-batt" id="nodeBatt"><div class="disc"></div><div class="nmeta"><div class="nlabel">Pin lưu trữ</div><div class="nval" id="vBatt">– %</div><div class="nsub" id="vBattSub"></div></div></div>
       <div class="node n-load" id="nodeLoad"><div class="disc"></div><div class="nlabel">Tải trong nhà</div><div class="nval" id="vLoad">– W</div></div>
       <div class="node n-hub"><div class="hub-core" id="hubCore"></div></div>
       <div class="flow-arrow" id="a-pv"></div>
