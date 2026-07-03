@@ -274,11 +274,21 @@ class InverterDataView(HomeAssistantView):
         if batt is not None:
             batt_status = "charging" if batt > 15 else "discharging" if batt < -15 else "idle"
 
-        # kèm mọi entity sensor.ib_* để khai thác đầy đủ
+        # kèm mọi entity cùng "họ" với cảm biến lưới (suy ra tiền tố từ map.grid),
+        # để lấy đủ 17 sensor bất kể tên là sensor.ib_* hay sensor.inverter_bridge_*
+        mp = cfg.get("map") or {}
         entities = {}
-        for state in hass.states.async_all("sensor"):
-            if state.entity_id.startswith("sensor.ib_"):
-                entities[state.entity_id] = state.state
+        grid_eid = mp.get("grid") or ""
+        prefix = grid_eid[:-len("grid_power")] if grid_eid.endswith("grid_power") else None
+        if prefix:
+            for state in hass.states.async_all("sensor"):
+                if state.entity_id.startswith(prefix):
+                    entities[state.entity_id] = state.state
+        else:  # dự phòng: ít nhất trả các sensor đã ánh xạ
+            for eid in (mp.get("grid"), mp.get("soc"), mp.get("batt"), mp.get("pv"), mp.get("load")):
+                st = hass.states.get(eid) if eid else None
+                if st:
+                    entities[eid] = st.state
 
         return self.json({
             "grid": {"power_w": r["grid_raw"], "import_w": gi, "status": grid_status},
