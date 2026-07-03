@@ -10,6 +10,7 @@ import logging
 import os
 import time
 from datetime import timedelta
+from ipaddress import ip_address
 
 import voluptuous as vol
 
@@ -20,6 +21,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
+from homeassistant.util.network import is_local
+
+try:  # vị trí hằng số auth có thể đổi theo phiên bản HA
+    from homeassistant.components.http.const import KEY_AUTHENTICATED
+except ImportError:  # pragma: no cover
+    KEY_AUTHENTICATED = "ha_authenticated"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -221,20 +228,34 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
 
 
 # ============================ REST endpoint ============================
+def _request_is_local(request) -> bool:
+    """True nếu request tới từ mạng nội bộ (LAN/loopback)."""
+    remote = request.remote
+    if not remote:
+        return False
+    try:
+        return is_local(ip_address(remote))
+    except ValueError:
+        return False
+
+
 class InverterDataView(HomeAssistantView):
     """GET /api/inverter_bridge/data — toàn bộ số liệu biến tần.
 
-    requires_auth = True: cần Home Assistant long-lived access token
-      (header: Authorization: Bearer <token>). An toàn khi truy cập từ bên ngoài
-      (Nabu Casa / DuckDNS / reverse proxy) — endpoint đi kèm HTTP server của HA.
-    Muốn mở không cần token cho gọi nội bộ LAN -> đổi thành False.
+    - Gọi NỘI BỘ (LAN/loopback): KHÔNG cần token (có token vẫn chạy).
+    - Gọi TỪ BÊN NGOÀI: bắt buộc Home Assistant long-lived token
+      (header: Authorization: Bearer <token>).
+    Endpoint đi kèm HTTP server của HA -> tự truy cập được qua Nabu Casa / DuckDNS /
+    reverse proxy (nhớ cấu hình trusted_proxies để HA nhận đúng IP thật của client).
     """
 
     url = "/api/inverter_bridge/data"
     name = "api:inverter_bridge:data"
-    requires_auth = True
+    requires_auth = False  # tự kiểm tra: LAN miễn token, ngoài LAN cần token
 
     async def get(self, request):
+        if not request.get(KEY_AUTHENTICATED, False) and not _request_is_local(request):
+            return self.json_message("Cần token khi gọi từ bên ngoài mạng nội bộ", 401)
         hass = request.app["hass"]
         cfg = hass.data.get(DOMAIN, {}).get("config") or {}
         r = _readings(hass, cfg)
