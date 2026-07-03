@@ -222,11 +222,17 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
 
 # ============================ REST endpoint ============================
 class InverterDataView(HomeAssistantView):
-    """GET /api/inverter_bridge/data — toàn bộ số liệu (không cần token, dùng nội bộ)."""
+    """GET /api/inverter_bridge/data — toàn bộ số liệu biến tần.
+
+    requires_auth = True: cần Home Assistant long-lived access token
+      (header: Authorization: Bearer <token>). An toàn khi truy cập từ bên ngoài
+      (Nabu Casa / DuckDNS / reverse proxy) — endpoint đi kèm HTTP server của HA.
+    Muốn mở không cần token cho gọi nội bộ LAN -> đổi thành False.
+    """
 
     url = "/api/inverter_bridge/data"
     name = "api:inverter_bridge:data"
-    requires_auth = False  # đổi True nếu muốn bắt buộc token
+    requires_auth = True
 
     async def get(self, request):
         hass = request.app["hass"]
