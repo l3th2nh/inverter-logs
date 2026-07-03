@@ -1,29 +1,34 @@
 """Inverter Bridge — panel "Hệ điện mặt trời" (giám sát biến tần + tự động hóa).
 
 - Đăng ký panel trên sidebar HA.
-- Lưu cấu hình (ánh xạ cảm biến + thông báo + quy tắc tự động) vào /config/.storage
-  qua Store -> đồng bộ mọi máy/điện thoại.
-- 2 lệnh WebSocket: inverter_bridge/get (đọc) và inverter_bridge/save (ghi).
-Cùng khuôn mẫu panel "Nhà tôi" của dự án bể nước.
+- Lưu cấu hình (ánh xạ cảm biến + thông báo + quy tắc tự động) vào /config/.storage.
+- ENGINE server-side: tự chạy thông báo/quy tắc 24/7 (kể cả khi đóng trình duyệt).
+- REST endpoint /api/inverter_bridge/data: trả toàn bộ thông tin cho cuộc gọi nội bộ.
+- Lệnh WebSocket: inverter_bridge/get (đọc) và inverter_bridge/save (ghi).
 """
 import logging
 import os
+import time
+from datetime import timedelta
 
 import voluptuous as vol
 
 from homeassistant.components import frontend, panel_custom, websocket_api
-from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "inverter_bridge"
 PANEL_URL = "/inverter_bridge/panel.js"
-PANEL_VER = "6"  # tăng mỗi lần sửa panel để chống cache
+PANEL_VER = "7"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
+ENGINE_INTERVAL = timedelta(seconds=10)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -32,6 +37,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = Store(hass, 1, DOMAIN)
     data = hass.data.setdefault(DOMAIN, {})
     data["store"] = store
+    data.setdefault("runtime", {})
+    data["config"] = await store.async_load() or {}
 
     # Phục vụ file JS của panel (1 lần / phiên HA)
     if not data.get("static_registered"):
@@ -39,6 +46,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.http.async_register_static_paths(
             [StaticPathConfig(PANEL_URL, panel_js, False)]
         )
+        hass.http.register_view(InverterDataView())
 
     # Panel trên sidebar
     if PANEL_PATH not in hass.data.get(frontend.DATA_PANELS, {}):
@@ -58,10 +66,205 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         websocket_api.async_register_command(hass, ws_get)
         websocket_api.async_register_command(hass, ws_save)
 
-    _LOGGER.info("Inverter Bridge: đã nạp panel + lệnh WebSocket")
+    # Engine chạy nền định kỳ (chỉ đăng ký 1 lần)
+    if not data.get("engine_unsub"):
+        async def _tick(now):
+            await _engine_evaluate(hass)
+
+        data["engine_unsub"] = async_track_time_interval(hass, _tick, ENGINE_INTERVAL)
+
+    _LOGGER.info("Inverter Bridge: đã nạp panel + engine + REST + WebSocket")
     return True
 
 
+# ============================ Đọc số liệu ============================
+def _num(hass: HomeAssistant, entity):
+    if not entity:
+        return None
+    st = hass.states.get(entity)
+    if not st or st.state in ("unknown", "unavailable", "", None):
+        return None
+    try:
+        return float(st.state)
+    except (ValueError, TypeError):
+        return None
+
+
+def _readings(hass: HomeAssistant, cfg: dict) -> dict:
+    m = cfg.get("map", {}) if cfg else {}
+    graw = _num(hass, m.get("grid"))
+    gsign = m.get("gridSign", "import_pos")
+    gimp = None if graw is None else (graw if gsign == "import_pos" else -graw)
+    return {
+        "grid_raw": graw,
+        "grid_import": gimp,
+        "soc": _num(hass, m.get("soc")),
+        "pv": _num(hass, m.get("pv")),
+        "load": _num(hass, m.get("load")),
+        "batt": _num(hass, m.get("batt")),
+    }
+
+
+def _cond(typ: str, thr: float, r: dict) -> bool:
+    gi, soc, pv, load = r["grid_import"], r["soc"], r["pv"], r["load"]
+    if typ in ("grid_import_start", "grid_import_above"):
+        return gi is not None and gi > thr
+    if typ == "battery_below":
+        return soc is not None and soc < thr
+    if typ == "pv_below":
+        return pv is not None and pv < thr
+    if typ == "load_above":
+        return load is not None and load > thr
+    return False
+
+
+def _render_msg(msg: str, r: dict) -> str:
+    def w(v):
+        return "–" if v is None else f"{round(v)} W"
+
+    power = "0 W" if r["grid_import"] is None else f"{max(0, round(r['grid_import']))} W"
+    soc = "–" if r["soc"] is None else f"{round(r['soc'])}%"
+    return (
+        (msg or "")
+        .replace("{power}", power)
+        .replace("{pv}", w(r["pv"]))
+        .replace("{soc}", soc)
+        .replace("{load}", w(r["load"]))
+        .replace("{time}", dt_util.now().strftime("%H:%M"))
+    )
+
+
+async def _call(hass: HomeAssistant, service: str, service_data: dict) -> None:
+    if "." not in service:
+        return
+    domain, name = service.split(".", 1)
+    try:
+        await hass.services.async_call(domain, name, service_data, blocking=False)
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Inverter Bridge: lỗi gọi %s: %s", service, err)
+
+
+def _handle(runtime: dict, key: str, on: bool, for_sec: float, cool_sec: float):
+    """Trả về 'fire' nếu cần bắn, 'reset' nếu vừa hết điều kiện, None nếu không."""
+    rt = runtime.setdefault(key, {"since": 0.0, "fired": False, "last": 0.0})
+    now = time.monotonic()
+    if on:
+        if not rt["since"]:
+            rt["since"] = now
+        held = (now - rt["since"]) >= for_sec
+        cool_ok = (now - rt["last"]) >= cool_sec
+        if held and not rt["fired"] and cool_ok:
+            rt["fired"] = True
+            rt["last"] = now
+            return "fire"
+        if held and not rt["fired"] and not cool_ok:
+            rt["fired"] = True
+        return None
+    was = rt["fired"]
+    rt["since"] = 0.0
+    rt["fired"] = False
+    return "reset" if was else None
+
+
+async def _engine_evaluate(hass: HomeAssistant) -> None:
+    data = hass.data.get(DOMAIN, {})
+    cfg = data.get("config") or {}
+    runtime = data.setdefault("runtime", {})
+    r = _readings(hass, cfg)
+
+    # 1) Thông báo khi bắt đầu lấy điện lưới
+    notif = cfg.get("notif", {})
+    if notif.get("enabled"):
+        thr = float(notif.get("threshold", 50) or 0)
+        res = _handle(
+            runtime, "notif",
+            r["grid_import"] is not None and r["grid_import"] > thr,
+            float(notif.get("forSec", 30) or 0),
+            float(notif.get("cooldownSec", 300) or 0),
+        )
+        service = notif.get("service", "persistent_notification.create")
+        if res == "fire":
+            await _call(hass, service, {
+                "title": "Cảnh báo điện lưới",
+                "message": _render_msg(notif.get("message", ""), r),
+                "notification_id": "inverter_bridge_grid",
+            })
+        elif res == "reset" and notif.get("notifyStop"):
+            await _call(hass, service, {
+                "title": "Điện lưới",
+                "message": "Hệ đã tự cấp trở lại.",
+                "notification_id": "inverter_bridge_grid",
+            })
+    else:
+        runtime.pop("notif", None)
+
+    # 2) Quy tắc tự động (tắt/bật thiết bị)
+    for rule in cfg.get("rules", []):
+        rid = rule.get("id")
+        if not rid:
+            continue
+        if not rule.get("enabled"):
+            runtime.pop(rid, None)
+            continue
+        trig = rule.get("trig", {})
+        res = _handle(
+            runtime, rid,
+            _cond(trig.get("type"), float(trig.get("threshold", 0) or 0), r),
+            float(trig.get("forSec", 0) or 0),
+            float(rule.get("cooldownSec", 0) or 0),
+        )
+        if res == "fire":
+            ents = rule.get("entities", [])
+            action = rule.get("action", "turn_off")
+            if ents:
+                await _call(hass, f"homeassistant.{action}", {"entity_id": ents})
+
+
+# ============================ REST endpoint ============================
+class InverterDataView(HomeAssistantView):
+    """GET /api/inverter_bridge/data — toàn bộ số liệu (không cần token, dùng nội bộ)."""
+
+    url = "/api/inverter_bridge/data"
+    name = "api:inverter_bridge:data"
+    requires_auth = False  # đổi True nếu muốn bắt buộc token
+
+    async def get(self, request):
+        hass = request.app["hass"]
+        cfg = hass.data.get(DOMAIN, {}).get("config") or {}
+        r = _readings(hass, cfg)
+        gi = r["grid_import"]
+        thr = float((cfg.get("notif") or {}).get("threshold", 50) or 0)
+        if gi is None:
+            grid_status = "unknown"
+        elif gi > thr:
+            grid_status = "importing"
+        elif gi < -20:
+            grid_status = "exporting"
+        else:
+            grid_status = "self"
+        batt = r["batt"]
+        batt_status = "idle"
+        if batt is not None:
+            batt_status = "charging" if batt > 15 else "discharging" if batt < -15 else "idle"
+
+        # kèm mọi entity sensor.ib_* để khai thác đầy đủ
+        entities = {}
+        for state in hass.states.async_all("sensor"):
+            if state.entity_id.startswith("sensor.ib_"):
+                entities[state.entity_id] = state.state
+
+        return self.json({
+            "grid": {"power_w": r["grid_raw"], "import_w": gi, "status": grid_status},
+            "battery": {"soc_pct": r["soc"], "power_w": batt, "status": batt_status},
+            "pv": {"power_w": r["pv"]},
+            "load": {"power_w": r["load"]},
+            "self_sufficient": grid_status in ("self", "exporting"),
+            "entities": entities,
+            "timestamp": dt_util.now().isoformat(),
+        })
+
+
+# ============================ WebSocket ============================
 @websocket_api.websocket_command({vol.Required("type"): "inverter_bridge/get"})
 @websocket_api.async_response
 async def ws_get(hass: HomeAssistant, connection, msg) -> None:
@@ -78,12 +281,19 @@ async def ws_get(hass: HomeAssistant, connection, msg) -> None:
 )
 @websocket_api.async_response
 async def ws_save(hass: HomeAssistant, connection, msg) -> None:
-    store: Store = hass.data[DOMAIN]["store"]
+    data = hass.data[DOMAIN]
+    store: Store = data["store"]
     await store.async_save(msg["config"])
+    data["config"] = msg["config"]        # engine dùng ngay cấu hình mới
+    data["runtime"] = {}                   # reset trạng thái để áp dụng thay đổi
     connection.send_result(msg["id"], {"ok": True})
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    data = hass.data.get(DOMAIN, {})
+    if data.get("engine_unsub"):
+        data["engine_unsub"]()
+        data["engine_unsub"] = None
     if PANEL_PATH in hass.data.get(frontend.DATA_PANELS, {}):
         frontend.async_remove_panel(hass, PANEL_PATH)
     return True

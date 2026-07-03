@@ -294,14 +294,14 @@ const SHELL = `
       </div>
     </div>
     <div class="hint-box"><span class="hb-ic"></span>
-      <div><b>Chạy trực tiếp trên trang</b> hoạt động khi tab này đang mở — tốt để thử ngay. Để chạy ổn định 24/7 kể cả khi tắt trình duyệt, bấm <b>Xuất YAML</b> rồi dán vào <code>automations.yaml</code> của Home Assistant.</div></div>
+      <div><b>Tự động chạy nền 24/7</b> qua tích hợp Inverter Bridge — bật công tắc + Lưu là có hiệu lực ngay, không cần mở trang. Nút <b>Thử thông báo</b> để test, <b>Xuất YAML</b> chỉ để tham khảo/tùy biến nâng cao.</div></div>
   </div>
   <div class="panel-view" id="panel-auto">
     <div class="rules-head"><h2>Quy tắc tự động</h2><span class="meta" id="rulesMeta"></span>
       <button class="btn tiny" id="rulesYamlBtn"></button><button class="btn tiny primary" id="addRuleBtn"></button></div>
     <div id="rulesList"></div>
     <div class="hint-box" style="margin-top:4px"><span class="hb-ic"></span>
-      <div>Mỗi quy tắc theo cấu trúc <b>KHI</b> điều kiện xảy ra <b>THÌ</b> tắt/bật thiết bị. Chạy thử ngay trên trang, hoặc <b>Xuất YAML</b> để Home Assistant chạy nền.</div></div>
+      <div>Mỗi quy tắc <b>KHI</b> điều kiện xảy ra <b>THÌ</b> tắt/bật thiết bị. Tích hợp <b>tự chạy nền 24/7</b> — Lưu quy tắc là có hiệu lực ngay, kể cả khi đóng trình duyệt.</div></div>
   </div>
 </div>
 
@@ -627,19 +627,13 @@ class SolarInverterPanel extends HTMLElement {
         else if(held&&!rt.fired&&!coolOk){ rt.fired=true; }
       } else { if(rt.fired&&onReset)onReset(); rt.since=0; rt.fired=false; rt.armed=false; }
     }
+    // Chi cap nhat hien thi "armed" (dang chuc bắn) - viec BAN THAT do engine
+    // server-side lo (chay nen 24/7), tranh trung lap.
     function engineTick(){
-      const r=readings(), now=Date.now();
-      if(state.notif.enabled){
-        handleTrigger('notif',{type:'grid_import_start',threshold:state.notif.threshold,forSec:state.notif.forSec,cooldownSec:state.notif.cooldownSec},r,now,
-          ()=>{ toast('alert','bell','Bắt đầu lấy điện lưới',renderMessage(state.notif.message)); sendNotify(state.notif.service,'Cảnh báo điện lưới',renderMessagePlain(state.notif.message)); },
-          ()=>{ if(state.notif.notifyStop){ toast('ok','check','Đã ngừng lấy lưới','Hệ đã tự cấp trở lại lúc '+new Date().toLocaleTimeString('vi-VN')); sendNotify(state.notif.service,'Điện lưới','Hệ đã tự cấp trở lại.'); } });
-      } else delete runtime['notif'];
+      const r=readings();
       state.rules.forEach(rule=>{
-        if(!rule.enabled){ delete runtime[rule.id]; return; }
-        handleTrigger(rule.id,{type:rule.trig.type,threshold:rule.trig.threshold,forSec:rule.trig.forSec,cooldownSec:rule.cooldownSec},r,now,
-          ()=>{ if(rule.entities.length){ callService('homeassistant',rule.action,{entity_id:rule.entities});
-            const names=rule.entities.map(fmtName).join(', ');
-            toast('action',rule.action==='turn_off'?'power':'bolt',(rule.action==='turn_off'?'Đã tắt ':'Đã bật ')+rule.entities.length+' thiết bị','“'+rule.name+'” · '+names); } },null);
+        const rt=runtime[rule.id]||(runtime[rule.id]={});
+        rt.armed = rule.enabled && evalCond(rule.trig.type, rule.trig.threshold, r).on;
       });
       if(!isModalOpen()) renderRules();
     }
