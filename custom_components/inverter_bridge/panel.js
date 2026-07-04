@@ -313,6 +313,11 @@ const SHELL = `
     <label style="display:block;font-size:13px;color:var(--muted);font-weight:500;margin:12px 0 7px">Nội dung thông báo</label>
     <textarea class="msg-input" id="ruNfMessage" placeholder="VD: Pin đầy {soc}, PV còn {pv} — nên bật bình nóng lạnh."></textarea>
     <div class="placeholders" id="ruPhList"></div>
+    <label style="display:block;font-size:13px;color:var(--muted);font-weight:500;margin:14px 0 7px">Số lần gửi tối đa</label>
+    <div class="seg-in" id="ruRepeatSeg"><button data-v="1">1 lần</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="5">5</button><button data-v="0">Không giới hạn</button></div>
+    <div class="hint">Gửi tối đa bao nhiêu lần khi điều kiện còn đúng (mỗi lần cách nhau bằng "Nghỉ giữa 2 lần chạy"). Đủ số lần thì ngừng cho tới khi điều kiện hết rồi tái lập.</div>
+    <div class="row" style="margin-top:12px"><div class="rl"><div class="k">Dừng khi có điện mặt trời</div><div class="d">Ngừng nhắc ngay khi PV bắt đầu phát (nắng lên) — hợp cho cảnh báo pin yếu.</div></div>
+      <div class="rc"><div class="switch" id="ruStopPvToggle"><div class="knob"></div></div></div></div>
   </div>
   <div class="field"><label>Nghỉ giữa 2 lần chạy</label>
     <div class="seg-in" id="ruCoolSeg"><button data-v="0">Không</button><button data-v="300" class="active">5 phút</button><button data-v="600">10 phút</button><button data-v="1800">30 phút</button></div></div>
@@ -524,6 +529,7 @@ class SolarInverterPanel extends HTMLElement {
           '<div class="rule-then"><span class="rule-tag then">THÌ</span><div class="rule-body">'+
           (rule.action==='notify'
             ? '<b>Gửi thông báo</b> <span style="color:var(--muted)">'+esc(rule.notifyService==='persistent_notification.create'?'trong HA':rule.notifyService)+'</span>'
+              +'<span style="color:var(--faint)">'+(rule.maxRepeats===0?' · lặp không giới hạn':(rule.maxRepeats>1?(' · tối đa '+rule.maxRepeats+' lần'):' · 1 lần'))+(rule.stopOnPv?' · dừng khi có PV':'')+'</span>'
             : '<b>'+(rule.action==='turn_off'?'Tắt':'Bật')+'</b> '+rule.entities.length+' thiết bị<div class="chiplist">'+devs+'</div>')+
           '</div></div>';
         card.querySelector('[data-act=edit]').onclick=()=>openRuleModal(rule);
@@ -535,7 +541,7 @@ class SolarInverterPanel extends HTMLElement {
 
     /* ---------- rule editor ---------- */
     let ruCtx={ rule:null, trig:'grid_import_start', action:'turn_off', entities:new Set(), forSec:30, coolSec:300,
-      nfService:'persistent_notification.create', nfMessage:'' };
+      nfService:'persistent_notification.create', nfMessage:'', maxRepeats:1, stopOnPv:false };
     function openRuleModal(rule){
       ruCtx.rule=rule;
       g('ruleModalTitle').textContent=rule?'Sửa quy tắc':'Thêm quy tắc';
@@ -547,10 +553,13 @@ class SolarInverterPanel extends HTMLElement {
       ruCtx.coolSec=rule?rule.cooldownSec:300;
       ruCtx.nfService=(rule&&rule.notifyService)||'persistent_notification.create';
       ruCtx.nfMessage=(rule&&rule.notifyMessage)||'';
+      ruCtx.maxRepeats=(rule&&rule.maxRepeats!=null)?rule.maxRepeats:1;
+      ruCtx.stopOnPv=!!(rule&&rule.stopOnPv);
       g('ruName').value=rule?rule.name:'';
       g('ruThresh').value=rule?rule.trig.threshold:TRIGGERS[ruCtx.trig].def;
       buildTrigPick(); applyTrig(); buildActPick(); buildDevList(); buildNotify();
-      setSeg('ruForSeg',ruCtx.forSec); setSeg('ruCoolSeg',ruCtx.coolSec);
+      setSeg('ruForSeg',ruCtx.forSec); setSeg('ruCoolSeg',ruCtx.coolSec); setSeg('ruRepeatSeg',ruCtx.maxRepeats);
+      g('ruStopPvToggle').classList.toggle('on',ruCtx.stopOnPv);
       showModal('ruleModal'); setTimeout(()=>g('ruName').focus(),50);
     }
     function buildTrigPick(){ const el=g('trigPick'); el.innerHTML='';
@@ -590,11 +599,14 @@ class SolarInverterPanel extends HTMLElement {
     function setSeg(id,val){ qsa('#'+id+' button').forEach(b=>b.classList.toggle('active',b.dataset.v===String(val))); }
     qsa('#ruForSeg button').forEach(b=>b.onclick=()=>{ ruCtx.forSec=parseInt(b.dataset.v); setSeg('ruForSeg',ruCtx.forSec); });
     qsa('#ruCoolSeg button').forEach(b=>b.onclick=()=>{ ruCtx.coolSec=parseInt(b.dataset.v); setSeg('ruCoolSeg',ruCtx.coolSec); });
+    qsa('#ruRepeatSeg button').forEach(b=>b.onclick=()=>{ ruCtx.maxRepeats=parseInt(b.dataset.v); setSeg('ruRepeatSeg',ruCtx.maxRepeats); });
+    g('ruStopPvToggle').onclick=()=>{ ruCtx.stopOnPv=!ruCtx.stopOnPv; g('ruStopPvToggle').classList.toggle('on',ruCtx.stopOnPv); };
     g('ruSaveBtn').onclick=()=>{
       const name=g('ruName').value.trim()||TRIGGERS[ruCtx.trig].label;
       const thresh=parseFloat(g('ruThresh').value)||TRIGGERS[ruCtx.trig].def;
       const data={ name, enabled:true, action:ruCtx.action, entities:[...ruCtx.entities], cooldownSec:ruCtx.coolSec,
         notifyService:ruCtx.nfService, notifyMessage:ruCtx.nfMessage.trim(),
+        maxRepeats:ruCtx.maxRepeats, stopOnPv:ruCtx.stopOnPv,
         trig:{ type:ruCtx.trig, threshold:thresh, forSec:ruCtx.forSec } };
       if(data.action==='notify' && !data.notifyMessage) data.notifyMessage='Điều kiện "'+name+'" xảy ra lúc {time}.';
       if(ruCtx.rule) Object.assign(ruCtx.rule,data); else { data.id=rid(); state.rules.push(data); }
@@ -679,7 +691,7 @@ class SolarInverterPanel extends HTMLElement {
       wrap.innerHTML=logsCache.map(e=>{ const ok=!!e.ok;
         return '<div class="log-item '+(ok?'ok':'fail')+'"><div class="log-ic">'+(ok?'✓':'✕')+'</div>'+
           '<div class="log-body"><div class="log-top"><b>'+esc(e.rule||'')+'</b>'+
-          '<span class="log-act">'+esc(actLabel(e.action))+'</span>'+
+          '<span class="log-act">'+esc(actLabel(e.action)+(e.n?(' · lần '+e.n):''))+'</span>'+
           '<span class="log-time">'+esc(fmtLogTime(e.ts))+'</span></div>'+
           '<div class="log-detail">'+esc(e.detail||'')+'</div></div></div>';
       }).join('');

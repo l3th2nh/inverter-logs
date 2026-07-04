@@ -33,7 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "inverter_bridge"
 PANEL_URL = "/inverter_bridge/panel.js"
-PANEL_VER = "12"  # tăng mỗi lần sửa panel để chống cache
+PANEL_VER = "13"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
 ENGINE_INTERVAL = timedelta(seconds=10)
@@ -305,26 +305,31 @@ def _append_log(hass: HomeAssistant, entry: dict) -> None:
         store.async_delay_save(lambda: data.get("logs", []), 3)
 
 
-def _handle(runtime: dict, key: str, on: bool, for_sec: float, cool_sec: float):
-    """Trả về 'fire' nếu cần bắn, 'reset' nếu vừa hết điều kiện, None nếu không."""
-    rt = runtime.setdefault(key, {"since": 0.0, "fired": False, "last": 0.0})
+def _handle(runtime: dict, key: str, on: bool, for_sec: float, cool_sec: float, max_count: int):
+    """Trả 'fire' khi cần bắn. Bắn lần đầu khi điều kiện giữ đủ for_sec, rồi LẶP mỗi
+    cool_sec, tối đa max_count lần (max_count=0 => không giới hạn). Khi điều kiện hết
+    -> reset bộ đếm để lần sau lại nhắc. Trả về (action|None, count_hiện_tại)."""
+    rt = runtime.setdefault(key, {"since": 0.0, "last": 0.0, "count": 0})
     now = time.monotonic()
-    if on:
-        if not rt["since"]:
-            rt["since"] = now
-        held = (now - rt["since"]) >= for_sec
-        cool_ok = (now - rt["last"]) >= cool_sec
-        if held and not rt["fired"] and cool_ok:
-            rt["fired"] = True
-            rt["last"] = now
-            return "fire"
-        if held and not rt["fired"] and not cool_ok:
-            rt["fired"] = True
-        return None
-    was = rt["fired"]
-    rt["since"] = 0.0
-    rt["fired"] = False
-    return "reset" if was else None
+    if not on:
+        rt["since"] = 0.0
+        rt["count"] = 0
+        return None, 0
+    if not rt["since"]:
+        rt["since"] = now
+    if (now - rt["since"]) < for_sec:
+        return None, rt["count"]
+    if rt["count"] == 0:                      # lần đầu: bắn ngay khi đủ giữ
+        rt["last"] = now
+        rt["count"] = 1
+        return "fire", 1
+    if max_count and rt["count"] >= max_count:  # đã đủ số lần -> ngừng
+        return None, rt["count"]
+    if (now - rt["last"]) >= cool_sec:         # tới hạn nghỉ -> bắn lại
+        rt["last"] = now
+        rt["count"] += 1
+        return "fire", rt["count"]
+    return None, rt["count"]
 
 
 async def _engine_evaluate(hass: HomeAssistant) -> None:
@@ -343,11 +348,16 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
             runtime.pop(rid, None)
             continue
         trig = rule.get("trig", {})
-        res = _handle(
-            runtime, rid,
-            _cond(trig.get("type"), float(trig.get("threshold", 0) or 0), r),
+        cond_on = _cond(trig.get("type"), float(trig.get("threshold", 0) or 0), r)
+        # Điều kiện DỪNG: khi có điện mặt trời (PV phát) -> coi như hết điều kiện,
+        # ngừng nhắc và reset để lần sau lại báo.
+        if rule.get("stopOnPv") and r["pv"] is not None and r["pv"] > 50:
+            cond_on = False
+        res, count = _handle(
+            runtime, rid, cond_on,
             float(trig.get("forSec", 0) or 0),
             float(rule.get("cooldownSec", 0) or 0),
+            int(rule.get("maxRepeats", 1) or 0),
         )
         if res == "fire":
             action = rule.get("action", "turn_off")
@@ -376,6 +386,7 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
                 "action": action,
                 "ok": ok,
                 "detail": detail,
+                "n": count,
             })
 
 
@@ -474,7 +485,13 @@ async def ws_save(hass: HomeAssistant, connection, msg) -> None:
     store: Store = data["store"]
     await store.async_save(msg["config"])
     data["config"] = msg["config"]        # engine dùng ngay cấu hình mới
-    data["runtime"] = {}                   # reset trạng thái để áp dụng thay đổi
+    # GIỮ runtime (đừng reset toàn bộ -> tránh bắn lại/spam mỗi lần lưu);
+    # chỉ bỏ trạng thái của quy tắc đã xóa. Muốn cho 1 quy tắc báo lại: tắt rồi bật lại nó.
+    ids = {rr.get("id") for rr in (msg["config"].get("rules") or [])}
+    rt = data.setdefault("runtime", {})
+    for k in list(rt.keys()):
+        if k not in ids:
+            rt.pop(k, None)
     connection.send_result(msg["id"], {"ok": True})
 
 
