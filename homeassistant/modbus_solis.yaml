@@ -94,7 +94,7 @@
       slave: 1
       input_type: input
       address: 33257
-      data_type: int32             # quy ước dự án: + = MUA lưới, - = BÁN ra (kiểm chứng khi có tải/nắng)
+      data_type: int32             # hệ zero-export: chỉ MUA lưới (>=0), không bán ra
       unit_of_measurement: "W"
       device_class: power
       state_class: measurement

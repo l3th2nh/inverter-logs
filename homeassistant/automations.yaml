@@ -9,9 +9,8 @@
 #   - HA -> Settings -> Automations & scenes -> tao moi -> ba cham -> "Edit in YAML"
 #     -> dan tung block; HOAC dan vao file automations.yaml cua HA config.
 #
-#  !! LUU Y DAU cua grid_power: dinh nghia hien tai la "+ = mua dien luoi, - = ban ra".
-#     PHAI kiem chung lai voi so lieu THAT cua Solis (so tren SolisCloud/LCD). Neu
-#     nguoc dau -> doi dieu kien "above/below" cho phu hop.
+#  HE ZERO-EXPORT (bam tai, KHONG ban luoi): grid_power (33257) luon >= 0 (chi MUA luoi
+#     khi PV+pin thieu), khong bao gio am. Khong can lo chieu "ban ra".
 # ============================================================================
 
 - id: inverter_grid_import_high
@@ -35,25 +34,34 @@
     #       - switch.dieu_hoa_phong_trong
     #       - switch.binh_nong_lanh
 
+# HE ZERO-EXPORT (bam tai, KHONG ban luoi): "du dien" = PIN DAY + PV con nang
+# -> luc nay PV dang bi CAT BOT (curtail), la thoi diem tot de bat tai hoan duoc
+#    (binh nong lanh/dieu hoa) de xai dien mat troi mien phi thay vi bo phi.
 - id: inverter_pv_surplus
-  alias: "Solis - Du dien mat troi (ban ra) -> co the bat thiet bi"
+  alias: "Solis - Pin day + con nang (PV bi cat) -> nen bat tai de xai dien mat troi"
   trigger:
     - platform: numeric_state
-      entity_id: sensor.ib_grid_power
-      below: -800                     # ban ra > 800W
+      entity_id: sensor.ib_battery_soc
+      above: 98                       # pin gan/day day
       for: "00:05:00"
   condition:
     - condition: numeric_state
-      entity_id: sensor.ib_battery_soc
-      above: 90                       # pin gan day moi xa sang tai
+      entity_id: sensor.ib_pv_power
+      above: 800                      # PV con san sinh (con nang)
+    - condition: numeric_state
+      entity_id: sensor.ib_grid_power
+      below: 50                       # khong dang mua luoi (dang tu cap)
   action:
     - service: persistent_notification.create
       data:
-        title: "Dư điện mặt trời"
+        title: "Dư điện mặt trời (pin đầy)"
         message: >-
-          Đang bán {{ (states('sensor.ib_grid_power') | float * -1) | round(0) }}W ra lưới,
-          pin {{ states('sensor.ib_battery_soc') }}%. Có thể bật điều hòa cho mát.
-    # --- Khi co dieu hoa that: ---
+          Pin {{ states('sensor.ib_battery_soc') }}%, PV {{ states('sensor.ib_pv_power') }}W.
+          Pin đã đầy nên PV đang bị cắt bớt — bật bình nóng lạnh/điều hòa để xài điện mặt trời.
+    # --- Khi co thiet bi that, bo comment de TU DONG bat: ---
+    # - service: switch.turn_on
+    #   target:
+    #     entity_id: switch.binh_nong_lanh
     # - service: climate.turn_on
     #   target:
     #     entity_id: climate.phong_khach
