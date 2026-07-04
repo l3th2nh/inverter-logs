@@ -49,10 +49,13 @@ REGISTERS = [
     ("battery_discharge_today","Battery Discharge Today",33167, 1, "U16", 0.1, "kWh", SensorDeviceClass.ENERGY, _T),
 ]
 
-# Đảo dấu để theo quy ước trực quan: DƯƠNG = SẠC (nạp), ÂM = XẢ.
-# Solis trả battery_power/current DƯƠNG khi ĐANG XẢ (kiểm chứng: PV=0, lưới=0, tải>0
-# mà battery_power dương + SOC đang tụt). Panel/engine giả định dương=sạc nên phải đảo.
-INVERT_SIGN = {"battery_power", "battery_current"}
+# Đảo dấu để theo quy ước trực quan mà panel/engine/automations dùng:
+#  - battery_power/current: DƯƠNG = SẠC (nạp), ÂM = XẢ.
+#    (Solis trả DƯƠNG khi ĐANG XẢ — kiểm chứng: PV=0, lưới=0, tải>0 mà dương + SOC tụt.)
+#  - grid_power: DƯƠNG = MUA (nhập từ lưới), ÂM = BÁN (phát lên lưới).
+#    (Solis/đồng hồ trả ÂM khi ĐANG MUA — kiểm chứng: đêm PV=0, pin nghỉ, tải 512W mà
+#     lưới hiển thị "bán" 552W -> thực chất đang MUA 552W = tải + ~40W biến tần tự dùng.)
+INVERT_SIGN = {"battery_power", "battery_current", "grid_power"}
 
 # Ánh xạ mặc định cho panel/engine (tự seed để không phải cấu hình tay).
 DEFAULT_MAP = {

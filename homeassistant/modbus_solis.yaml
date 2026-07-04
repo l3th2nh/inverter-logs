@@ -95,7 +95,8 @@
       slave: 1
       input_type: input
       address: 33257
-      data_type: int32             # hệ zero-export: chỉ MUA lưới (>=0), không bán ra
+      data_type: int32             # Solis: ÂM = MUA. Đảo dấu -> DƯƠNG = MUA (nhập), ÂM = bán
+      scale: -1
       unit_of_measurement: "W"
       device_class: power
       state_class: measurement
