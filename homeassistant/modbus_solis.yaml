@@ -1,0 +1,235 @@
+# ============================================================================
+#  modbus_solis.yaml — [PHƯƠNG ÁN THỦ CÔNG / DỰ PHÒNG]
+#  Đọc biến tần Solis TRỰC TIẾP qua que WiFi datalogger (Modbus TCP).
+#
+#  >>> KHUYẾN NGHỊ: dùng integration "Inverter Bridge" (custom_components) thay cho file này —
+#      cài qua HACS, điền IP là xong, KHÔNG cần YAML/restart thủ công, cập nhật qua GitHub.
+#      Chỉ dùng file YAML này nếu KHÔNG muốn cài custom_component.
+# ----------------------------------------------------------------------------
+#  Nguồn dữ liệu: que WiFi stick của Solis đã ở trên LAN, mở Modbus TCP.
+#    host 192.168.0.89, port 502, slave/unit id 1, hàm FC04 (input register),
+#    ĐỊA CHỈ = số thanh ghi RAW theo tài liệu (33xxx) — KHÔNG trừ offset 30001.
+#    Số 32-bit: địa chỉ thấp = word cao (big-endian) = mặc định HA (không swap).
+#  Đã kiểm chứng LIVE bằng pymodbus 2026-07-04 (17/17 thanh ghi, V×I khớp P).
+#
+#  Entity tạo ra: sensor.ib_*  (trùng tên với nguồn ESP32/MQTT cũ) -> dashboard.yaml,
+#  automations.yaml và panel "Hệ điện mặt trời" dùng được NGAY, không phải sửa.
+#  ⚠️ Nếu thiết bị MQTT "Inverter Bridge" cũ còn tồn tại -> XÓA nó (Settings ->
+#     Devices & Services -> MQTT -> Inverter Bridge -> Delete) để tránh trùng entity.
+#
+#  Cách nạp: trong configuration.yaml của HA thêm:   modbus: !include modbus_solis.yaml
+#  rồi Developer Tools -> YAML -> Check config -> Restart (modbus cần restart).
+# ============================================================================
+
+- name: solis_stick
+  type: tcp
+  host: 192.168.0.89
+  port: 502
+  delay: 3                       # chờ que stick sẵn sàng sau khi HA khởi động
+  timeout: 5
+  message_wait_milliseconds: 30  # nhẹ nhàng với stick (nó cũng đang upload cloud)
+  sensors:
+    # ---------- Pin (battery) ----------
+    - name: ib_battery_soc
+      unique_id: ib_battery_soc
+      slave: 1
+      input_type: input
+      address: 33139
+      data_type: uint16
+      unit_of_measurement: "%"
+      device_class: battery
+      state_class: measurement
+      scan_interval: 20
+
+    - name: ib_battery_soh
+      unique_id: ib_battery_soh
+      slave: 1
+      input_type: input
+      address: 33140
+      data_type: uint16
+      unit_of_measurement: "%"
+      state_class: measurement
+      scan_interval: 60
+
+    - name: ib_battery_voltage
+      unique_id: ib_battery_voltage
+      slave: 1
+      input_type: input
+      address: 33133
+      data_type: uint16
+      scale: 0.1
+      precision: 1
+      unit_of_measurement: "V"
+      device_class: voltage
+      state_class: measurement
+      scan_interval: 20
+
+    - name: ib_battery_current
+      unique_id: ib_battery_current
+      slave: 1
+      input_type: input
+      address: 33134
+      data_type: int16             # có dấu: + nạp, - xả
+      scale: 0.1
+      precision: 1
+      unit_of_measurement: "A"
+      device_class: current
+      state_class: measurement
+      scan_interval: 20
+
+    - name: ib_battery_power
+      unique_id: ib_battery_power
+      slave: 1
+      input_type: input
+      address: 33149
+      data_type: int32             # + nạp, - xả
+      unit_of_measurement: "W"
+      device_class: power
+      state_class: measurement
+      scan_interval: 15
+
+    # ---------- Lưới điện (grid/meter) ----------
+    - name: ib_grid_power
+      unique_id: ib_grid_power
+      slave: 1
+      input_type: input
+      address: 33257
+      data_type: int32             # quy ước dự án: + = MUA lưới, - = BÁN ra (kiểm chứng khi có tải/nắng)
+      unit_of_measurement: "W"
+      device_class: power
+      state_class: measurement
+      scan_interval: 15
+
+    - name: ib_meter_frequency
+      unique_id: ib_meter_frequency
+      slave: 1
+      input_type: input
+      address: 33282
+      data_type: uint16
+      scale: 0.01
+      precision: 2
+      unit_of_measurement: "Hz"
+      device_class: frequency
+      state_class: measurement
+      scan_interval: 30
+
+    # ---------- Điện mặt trời (PV) ----------
+    - name: ib_pv1_voltage
+      unique_id: ib_pv1_voltage
+      slave: 1
+      input_type: input
+      address: 33049
+      data_type: uint16
+      scale: 0.1
+      precision: 1
+      unit_of_measurement: "V"
+      device_class: voltage
+      state_class: measurement
+      scan_interval: 30
+
+    - name: ib_pv2_voltage
+      unique_id: ib_pv2_voltage
+      slave: 1
+      input_type: input
+      address: 33051
+      data_type: uint16
+      scale: 0.1
+      precision: 1
+      unit_of_measurement: "V"
+      device_class: voltage
+      state_class: measurement
+      scan_interval: 30
+
+    - name: ib_pv_power
+      unique_id: ib_pv_power
+      slave: 1
+      input_type: input
+      address: 33057
+      data_type: int32
+      unit_of_measurement: "W"
+      device_class: power
+      state_class: measurement
+      scan_interval: 15
+
+    # ---------- Tải & đầu ra biến tần ----------
+    - name: ib_house_load_power
+      unique_id: ib_house_load_power
+      slave: 1
+      input_type: input
+      address: 33147
+      data_type: uint16            # 16-bit (đọc 32-bit sẽ ra số rác)
+      unit_of_measurement: "W"
+      device_class: power
+      state_class: measurement
+      scan_interval: 15
+
+    - name: ib_inverter_ac_power
+      unique_id: ib_inverter_ac_power
+      slave: 1
+      input_type: input
+      address: 33151
+      data_type: int32
+      unit_of_measurement: "W"
+      device_class: power
+      state_class: measurement
+      scan_interval: 15
+
+    - name: ib_inverter_temperature
+      unique_id: ib_inverter_temperature
+      slave: 1
+      input_type: input
+      address: 33093
+      data_type: int16
+      scale: 0.1
+      precision: 1
+      unit_of_measurement: "°C"
+      device_class: temperature
+      state_class: measurement
+      scan_interval: 30
+
+    # ---------- Năng lượng (cho Energy Dashboard / thống kê) ----------
+    - name: ib_daily_generation
+      unique_id: ib_daily_generation
+      slave: 1
+      input_type: input
+      address: 33035
+      data_type: uint16
+      scale: 0.1
+      precision: 1
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+      scan_interval: 60
+
+    - name: ib_total_generation
+      unique_id: ib_total_generation
+      slave: 1
+      input_type: input
+      address: 33029
+      data_type: uint32
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+      scan_interval: 120
+
+    - name: ib_total_imported
+      unique_id: ib_total_imported
+      slave: 1
+      input_type: input
+      address: 33169
+      data_type: uint32
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+      scan_interval: 120
+
+    - name: ib_total_battery_charge
+      unique_id: ib_total_battery_charge
+      slave: 1
+      input_type: input
+      address: 33161
+      data_type: uint32
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+      scan_interval: 120

@@ -17,6 +17,7 @@ import voluptuous as vol
 from homeassistant.components import frontend, panel_custom, websocket_api
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
@@ -36,6 +37,7 @@ PANEL_VER = "7"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
 ENGINE_INTERVAL = timedelta(seconds=10)
+PLATFORMS = [Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -46,6 +48,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data["store"] = store
     data.setdefault("runtime", {})
     data["config"] = await store.async_load() or {}
+
+    # Nguồn dữ liệu Modbus TCP (đọc thẳng que WiFi Solis) — nếu người dùng đã điền host.
+    # Không có host -> chế độ panel-only (dùng sensor từ MQTT/ESP32 như trước).
+    host = entry.data.get("host")
+    if host and not data.get("coordinator"):
+        from .modbus import DEFAULT_MAP, DEFAULT_PORT, SolisModbusCoordinator
+
+        coordinator = SolisModbusCoordinator(
+            hass, host, entry.data.get("port", DEFAULT_PORT)
+        )
+        await coordinator.async_config_entry_first_refresh()
+        data["coordinator"] = coordinator
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+        # Tự seed ánh xạ cảm biến cho panel/engine (chỉ khi chưa có) -> zero-config.
+        if not data["config"].get("map"):
+            data["config"]["map"] = dict(DEFAULT_MAP)
+            await store.async_save(data["config"])
 
     # Phục vụ file JS của panel (1 lần / phiên HA)
     if not data.get("static_registered"):
@@ -328,6 +348,10 @@ async def ws_save(hass: HomeAssistant, connection, msg) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data = hass.data.get(DOMAIN, {})
+    if data.get("coordinator"):
+        await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+        await data["coordinator"].async_shutdown()
+        data["coordinator"] = None
     if data.get("engine_unsub"):
         data["engine_unsub"]()
         data["engine_unsub"] = None

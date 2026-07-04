@@ -1,11 +1,12 @@
 {
   "domain": "inverter_bridge",
   "name": "Inverter Bridge",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "documentation": "https://github.com/l3th2nh/inverter-logs",
   "issue_tracker": "https://github.com/l3th2nh/inverter-logs/issues",
   "dependencies": ["http", "websocket_api", "frontend", "panel_custom"],
+  "requirements": ["pymodbus>=3.5.0"],
   "codeowners": ["@l3th2nh"],
-  "iot_class": "local_push",
+  "iot_class": "local_polling",
   "config_flow": true
 }

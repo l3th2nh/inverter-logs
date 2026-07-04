@@ -4,8 +4,11 @@ Thiết bị ESP32 đọc dữ liệu biến tần (Solis, sau này Deye/Growatt
 đẩy vào **Home Assistant** bằng MQTT auto-discovery, kèm **panel "Hệ điện mặt trời"** để giám sát
 dòng năng lượng và xây kịch bản tự động (tắt/bật thiết bị theo trạng thái lấy/bán điện lưới).
 
+- Custom component: `custom_components/inverter_bridge/` — panel sidebar HA + **tự đọc biến tần
+  Solis qua Modbus TCP** (que WiFi datalogger trên LAN) tạo 17 `sensor.ib_*`. **Không cần
+  ESP32/RS485/MQTT/YAML** — cài qua HACS, điền IP (điền sẵn) là xong. Đây là cách khuyến nghị.
 - Firmware: `firmware/` (PlatformIO, ESP32) — WiFi captive portal + MQTT + auto-discovery.
-- Custom component: `custom_components/inverter_bridge/` — panel sidebar HA (native, không cần token).
+  (Phương án thay thế khi biến tần KHÔNG có que WiFi hở Modbus TCP → đọc RS485 trực tiếp.)
 - Công cụ dev: `tools/` (giả lập Solis + kiểm tra MQTT). Tài liệu: `DU_AN_DOC_BIEN_TAN.md`.
 
 ## Cài panel qua HACS (khuyến nghị)
