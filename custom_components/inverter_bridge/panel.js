@@ -265,8 +265,8 @@ const SHELL = `
         <line class="edge" id="e-load" x1="50" y1="53" x2="50" y2="82"></line>
       </svg>
       <div class="node n-pv" id="nodePv"><div class="nlabel">Điện mặt trời</div><div class="nval" id="vPv">– W</div><div class="disc"></div></div>
-      <div class="node n-grid" id="nodeGrid"><div class="disc"></div><div class="nmeta"><div class="nlabel">Lưới điện</div><div class="nval" id="vGrid">– W</div><div class="nsub" id="vGridSub"></div></div></div>
-      <div class="node n-batt" id="nodeBatt"><div class="disc"></div><div class="nmeta"><div class="nlabel">Pin lưu trữ</div><div class="nval" id="vBatt">– %</div><div class="nsub" id="vBattSub"></div></div></div>
+      <div class="node n-grid" id="nodeGrid"><div class="disc"></div><div class="nmeta"><div class="nlabel">Lưới điện</div><div class="nval" id="vGrid">– W</div></div></div>
+      <div class="node n-batt" id="nodeBatt"><div class="disc"></div><div class="nmeta"><div class="nlabel">Pin lưu trữ</div><div class="nval" id="vBatt">– %</div></div></div>
       <div class="node n-load" id="nodeLoad"><div class="disc"></div><div class="nlabel">Tải trong nhà</div><div class="nval" id="vLoad">– W</div></div>
       <div class="node n-hub"><div class="hub-core" id="hubCore"></div></div>
     </div>
@@ -482,21 +482,20 @@ class SolarInverterPanel extends HTMLElement {
       setNode('nodeLoad',r.load!=null&&r.load>20,'vLoad',fmtW(r.load));
       const battEl=g('nodeBatt'), soc=r.soc;
       g('vBatt').textContent = soc!=null?Math.round(soc)+' %':'– %';
-      let bs='–'; if(r.batt!=null){ if(r.batt>15)bs='Đang sạc'; else if(r.batt<-15)bs='Đang xả'; else bs='Nghỉ'; }
-      g('vBattSub').textContent = r.batt!=null?bs+' · '+fmtW(Math.abs(r.batt)):'';
       battEl.classList.toggle('on',soc!=null);
       battEl.style.setProperty('--nc', soc!=null&&soc<25?'var(--grid-in)':'var(--batt)');
       const gi=r.gridImport, gEl=g('nodeGrid');
       g('vGrid').textContent = gi!=null?fmtW(Math.abs(gi)):'– W';
       const importing=gi!=null&&gi>50, exporting=gi!=null&&gi<-20;
-      g('vGridSub').textContent = importing?'Đang nhập':(exporting?'Đang bán':(gi!=null?'Cân bằng':''));
       gEl.classList.toggle('on', gi!=null&&(importing||exporting));
       gEl.style.setProperty('--nc', importing?'var(--grid-in)':(exporting?'var(--grid-out)':'var(--grid-in)'));
       edge('e-pv',pvOn,'var(--solar)','normal',r.pv);
       edge('e-load',r.load!=null&&r.load>20,'var(--load)','normal',r.load);
+      // pin: sạc (batt>0) = hub->pin ('normal'); xả (batt<0) = pin->hub ('reverse'); nghỉ = dừng
       if(r.batt!=null&&Math.abs(r.batt)>15) edge('e-batt',true,'var(--batt)',r.batt>0?'normal':'reverse',r.batt); else edge('e-batt',false);
-      if(importing) edge('e-grid',true,'var(--grid-in)','reverse',gi);
-      else if(exporting) edge('e-grid',true,'var(--grid-out)','normal',gi); else edge('e-grid',false);
+      // lưới: mua (importing) = lưới->hub ('normal', chảy VÀO trung tâm); bán = hub->lưới ('reverse')
+      if(importing) edge('e-grid',true,'var(--grid-in)','normal',gi);
+      else if(exporting) edge('e-grid',true,'var(--grid-out)','reverse',gi); else edge('e-grid',false);
       const badge=g('gridBadge'), txt=g('gridBadgeTxt'); badge.className='grid-badge';
       if(gi==null) txt.textContent='Chưa có dữ liệu lưới';
       else if(importing){ badge.classList.add('importing'); txt.innerHTML='ĐANG LẤY LƯỚI · <b>'+fmtW(gi)+'</b>'; }
