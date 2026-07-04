@@ -33,7 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "inverter_bridge"
 PANEL_URL = "/inverter_bridge/panel.js"
-PANEL_VER = "9"  # tăng mỗi lần sửa panel để chống cache
+PANEL_VER = "10"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
 ENGINE_INTERVAL = timedelta(seconds=10)
@@ -209,6 +209,61 @@ async def _call(hass: HomeAssistant, service: str, service_data: dict) -> None:
         _LOGGER.warning("Inverter Bridge: lỗi gọi %s: %s", service, err)
 
 
+async def _persistent(hass: HomeAssistant, title: str, message: str, nid: str) -> None:
+    await hass.services.async_call(
+        "persistent_notification", "create",
+        {"title": title, "message": message, "notification_id": nid}, blocking=False,
+    )
+
+
+async def _send_notification(
+    hass: HomeAssistant, service: str, title: str, message: str, rid: str
+) -> None:
+    """Gửi thông báo linh hoạt, chịu được nhiều kiểu dịch vụ HA; luôn có fallback.
+
+    - persistent_notification.create  -> hiện trong HA.
+    - notify.<x> kiểu cũ (mobile_app_x, notify...) -> nhận {title, message} trực tiếp.
+    - notify entity (HA mới) -> notify.send_message + target: entity_id (ra điện thoại).
+    - notify.send_message trần / lỗi -> fallback về persistent (kèm ghi chú) để không mất báo.
+    """
+    nid = f"inverter_bridge_rule_{rid}"
+    if service.startswith("persistent_notification"):
+        await _persistent(hass, title, message, nid)
+        return
+    domain, _, name = service.partition(".")
+    try:
+        # notify.<x> kiểu cũ (không phải send_message)
+        if domain == "notify" and name and name != "send_message" \
+                and hass.services.has_service("notify", name):
+            await hass.services.async_call(
+                "notify", name, {"title": title, "message": message}, blocking=True
+            )
+            return
+        # notify entity qua send_message + target (mobile_app trên HA mới)
+        if service.startswith("notify.") and hass.states.get(service) is not None \
+                and hass.services.has_service("notify", "send_message"):
+            await hass.services.async_call(
+                "notify", "send_message",
+                {"title": title, "message": message},
+                blocking=True, target={"entity_id": service},
+            )
+            return
+        # domain khác người dùng tự nhập
+        if domain and name and domain not in ("notify",) and hass.services.has_service(domain, name):
+            await hass.services.async_call(
+                domain, name, {"title": title, "message": message}, blocking=True
+            )
+            return
+        raise ValueError(
+            f"dịch vụ '{service}' không dùng được (chọn notify.mobile_app_… hoặc để 'trong HA')"
+        )
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Inverter Bridge: gửi thông báo '%s' lỗi (%s) -> dùng persistent", service, err)
+        await _persistent(
+            hass, title, f"{message}\n\n(Không gửi được qua '{service}'. Sửa quy tắc chọn dịch vụ khác.)", nid
+        )
+
+
 def _handle(runtime: dict, key: str, on: bool, for_sec: float, cool_sec: float):
     """Trả về 'fire' nếu cần bắn, 'reset' nếu vừa hết điều kiện, None nếu không."""
     rt = runtime.setdefault(key, {"since": 0.0, "fired": False, "last": 0.0})
@@ -256,14 +311,13 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
         if res == "fire":
             action = rule.get("action", "turn_off")
             if action == "notify":
-                service = rule.get("notifyService") or "persistent_notification.create"
-                sdata = {
-                    "title": rule.get("name") or "Hệ điện mặt trời",
-                    "message": _render_msg(rule.get("notifyMessage", ""), r),
-                }
-                if service == "persistent_notification.create":
-                    sdata["notification_id"] = f"inverter_bridge_rule_{rid}"
-                await _call(hass, service, sdata)
+                await _send_notification(
+                    hass,
+                    rule.get("notifyService") or "persistent_notification.create",
+                    rule.get("name") or "Hệ điện mặt trời",
+                    _render_msg(rule.get("notifyMessage", ""), r),
+                    rid,
+                )
             else:
                 ents = rule.get("entities", [])
                 if ents:

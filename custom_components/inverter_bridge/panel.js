@@ -386,8 +386,13 @@ class SolarInverterPanel extends HTMLElement {
     const S=()=> (self._hass && self._hass.states) || {};
     const numOf=(e)=>{ const s=S()[e]; if(!s) return null; const v=parseFloat(s.state); return isNaN(v)?null:v; };
     const fmtName=(e)=>{ const s=S()[e]; return (s&&s.attributes&&s.attributes.friendly_name)||e; };
-    const notifyServices=()=>{ const svc=(self._hass&&self._hass.services&&self._hass.services.notify)||{};
-      const list=['persistent_notification.create']; Object.keys(svc).forEach(k=>list.push('notify.'+k)); return list; };
+    const notifyServices=()=>{ const out=['persistent_notification.create'];
+      // Dịch vụ notify.<x> kiểu cũ (mobile_app_x, notify...), BỎ send_message (cần target).
+      const svc=(self._hass&&self._hass.services&&self._hass.services.notify)||{};
+      Object.keys(svc).forEach(k=>{ if(k!=='send_message') out.push('notify.'+k); });
+      // Notify ENTITY (HA mới, vd notify.mobile_app_dien_thoai) -> gửi ra điện thoại.
+      const st=S(); Object.keys(st).forEach(e=>{ if(e.startsWith('notify.')&&!out.includes(e)) out.push(e); });
+      return out; };
     const callService=(domain,service,data)=>{ try{ self._hass.callService(domain,service,data); }catch(e){} };
     const sendNotify=(service,title,message)=>{ const i=service.indexOf('.'); const dom=service.slice(0,i), svc=service.slice(i+1);
       callService(dom,svc,{title,message}); };
