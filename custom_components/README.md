@@ -28,7 +28,9 @@ Chép `inverter_bridge/` vào `<HA config>/custom_components/` (qua Samba
   Kiểm tra **Công suất lưới** đúng, và **chiều dương** (xem giá trị trực tiếp: đang lấy lưới mà số
   dương → chọn "Dương = NHẬP"). Lưu.
 - Tab **Thông báo**: bật + đặt ngưỡng/nội dung → **Thử thông báo** để kiểm tra.
-- Tab **Tự động hóa**: thêm quy tắc KHI…THÌ tắt/bật thiết bị.
+- Tab **Tự động hóa**: thêm quy tắc KHI…THÌ **tắt/bật thiết bị** hoặc **gửi thông báo**
+  (chọn `notify.mobile_app_…` để báo ra **điện thoại**). Chọn "Gửi thông báo" thì danh sách
+  thiết bị tự ẩn; nội dung hỗ trợ biến `{power} {pv} {soc} {load} {time}`.
 - **Xuất YAML**: để HA chạy nền 24/7 (khuyến nghị cho vận hành thật).
 
 ## Lưu ý

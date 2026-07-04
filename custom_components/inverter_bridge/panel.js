@@ -184,6 +184,7 @@ select.sel:focus,.num:focus-within{border-color:var(--grid-out)}
 .field .hint{font-size:11.5px;color:var(--faint);margin-top:6px;line-height:1.45}
 .pick{display:grid;gap:8px}
 .pick.cols2{grid-template-columns:1fr 1fr}
+.pick.cols3{grid-template-columns:1fr 1fr 1fr}
 .pick .opt{border:1px solid var(--line-strong);border-radius:12px;padding:12px 13px;cursor:pointer;transition:.18s;color:var(--muted);
   background:var(--panel);display:flex;align-items:center;gap:11px;font-size:13.5px}
 .pick .opt svg{width:20px;height:20px;color:var(--faint);flex:none;transition:.2s}
@@ -316,9 +317,18 @@ const SHELL = `
   <div class="field"><label>Phải kéo dài</label>
     <div class="seg-in" id="ruForSeg"><button data-v="0">Ngay</button><button data-v="10">10s</button><button data-v="30" class="active">30s</button><button data-v="60">1 phút</button><button data-v="120">2 phút</button></div></div>
   <div class="field"><label>THÌ — hành động</label>
-    <div class="pick act cols2" id="actPick"><div class="opt sel" data-a="turn_off"><span></span><div><div class="ot">Tắt thiết bị</div></div></div>
-      <div class="opt" data-a="turn_on"><span></span><div><div class="ot">Bật thiết bị</div></div></div></div></div>
-  <div class="field"><label id="devLabel">Chọn thiết bị (<span id="devCount">0</span>)</label><div class="dev-list" id="ruDevList"></div><div class="hint" id="devHint"></div></div>
+    <div class="pick act cols3" id="actPick"><div class="opt sel" data-a="turn_off"><span></span><div><div class="ot">Tắt thiết bị</div></div></div>
+      <div class="opt" data-a="turn_on"><span></span><div><div class="ot">Bật thiết bị</div></div></div>
+      <div class="opt" data-a="notify"><span></span><div><div class="ot">Gửi thông báo</div></div></div></div></div>
+  <div class="field" id="ruDevField"><label id="devLabel">Chọn thiết bị (<span id="devCount">0</span>)</label><div class="dev-list" id="ruDevList"></div><div class="hint" id="devHint"></div></div>
+  <div class="field" id="ruNotifyField" style="display:none">
+    <label>Gửi tới</label>
+    <select class="sel" id="ruNfService" style="max-width:none;width:100%"></select>
+    <div class="hint">Chọn <b>notify.mobile_app_…</b> để báo ra điện thoại (cần cài app Home Assistant + đăng nhập trên máy đó).</div>
+    <label style="display:block;font-size:13px;color:var(--muted);font-weight:500;margin:12px 0 7px">Nội dung thông báo</label>
+    <textarea class="msg-input" id="ruNfMessage" placeholder="VD: Pin đầy {soc}, PV còn {pv} — nên bật bình nóng lạnh."></textarea>
+    <div class="placeholders" id="ruPhList"></div>
+  </div>
   <div class="field"><label>Nghỉ giữa 2 lần chạy</label>
     <div class="seg-in" id="ruCoolSeg"><button data-v="0">Không</button><button data-v="300" class="active">5 phút</button><button data-v="600">10 phút</button><button data-v="1800">30 phút</button></div></div>
   <button class="del-link" id="ruDelBtn" style="display:none">Xóa quy tắc này</button>
@@ -552,7 +562,11 @@ class SolarInverterPanel extends HTMLElement {
           '<button class="rk danger" data-act="del" title="Xóa">'+icon('trash')+'</button></div>'+
           '<div class="switch'+(rule.enabled?' on':'')+'" data-act="toggle" style="margin-left:4px"><div class="knob"></div></div></div>'+
           '<div class="rule-when"><span class="rule-tag when">KHI</span><div class="rule-body"><b>'+esc(t.label)+'</b>'+thTxt+forTxt+'</div></div>'+
-          '<div class="rule-then"><span class="rule-tag then">THÌ</span><div class="rule-body"><b>'+(rule.action==='turn_off'?'Tắt':'Bật')+'</b> '+rule.entities.length+' thiết bị<div class="chiplist">'+devs+'</div></div></div>';
+          '<div class="rule-then"><span class="rule-tag then">THÌ</span><div class="rule-body">'+
+          (rule.action==='notify'
+            ? '<b>Gửi thông báo</b> <span style="color:var(--muted)">'+esc(rule.notifyService==='persistent_notification.create'?'trong HA':rule.notifyService)+'</span>'
+            : '<b>'+(rule.action==='turn_off'?'Tắt':'Bật')+'</b> '+rule.entities.length+' thiết bị<div class="chiplist">'+devs+'</div>')+
+          '</div></div>';
         card.querySelector('[data-act=edit]').onclick=()=>openRuleModal(rule);
         card.querySelector('[data-act=del]').onclick=()=>{ state.rules=state.rules.filter(x=>x.id!==rule.id); delete runtime[rule.id]; saveCfg(); renderRules(); };
         card.querySelector('[data-act=toggle]').onclick=()=>{ rule.enabled=!rule.enabled; delete runtime[rule.id]; saveCfg(); renderRules(); };
@@ -561,7 +575,8 @@ class SolarInverterPanel extends HTMLElement {
     }
 
     /* ---------- rule editor ---------- */
-    let ruCtx={ rule:null, trig:'grid_import_start', action:'turn_off', entities:new Set(), forSec:30, coolSec:300 };
+    let ruCtx={ rule:null, trig:'grid_import_start', action:'turn_off', entities:new Set(), forSec:30, coolSec:300,
+      nfService:'persistent_notification.create', nfMessage:'' };
     function openRuleModal(rule){
       ruCtx.rule=rule;
       g('ruleModalTitle').textContent=rule?'Sửa quy tắc':'Thêm quy tắc';
@@ -571,9 +586,11 @@ class SolarInverterPanel extends HTMLElement {
       ruCtx.entities=new Set(rule?rule.entities:[]);
       ruCtx.forSec=rule?rule.trig.forSec:30;
       ruCtx.coolSec=rule?rule.cooldownSec:300;
+      ruCtx.nfService=(rule&&rule.notifyService)||'persistent_notification.create';
+      ruCtx.nfMessage=(rule&&rule.notifyMessage)||'';
       g('ruName').value=rule?rule.name:'';
       g('ruThresh').value=rule?rule.trig.threshold:TRIGGERS[ruCtx.trig].def;
-      buildTrigPick(); applyTrig(); buildActPick(); buildDevList();
+      buildTrigPick(); applyTrig(); buildActPick(); buildDevList(); buildNotify();
       setSeg('ruForSeg',ruCtx.forSec); setSeg('ruCoolSeg',ruCtx.coolSec);
       showModal('ruleModal'); setTimeout(()=>g('ruName').focus(),50);
     }
@@ -585,8 +602,22 @@ class SolarInverterPanel extends HTMLElement {
     }
     function applyTrig(){ const t=TRIGGERS[ruCtx.trig];
       g('threshLabel').textContent=t.tlabel; g('threshUnit').textContent=t.unit; g('threshHint').textContent=t.thint; g('threshField').style.display='block'; }
+    const ACT_ICON={turn_off:'power',turn_on:'bolt',notify:'bell'};
     function buildActPick(){ qsa('#actPick .opt').forEach(o=>{ o.classList.toggle('sel',o.dataset.a===ruCtx.action);
-      o.querySelector('span').innerHTML=o.dataset.a==='turn_off'?icon('power'):icon('bolt'); o.onclick=()=>{ ruCtx.action=o.dataset.a; buildActPick(); }; }); }
+      o.querySelector('span').innerHTML=icon(ACT_ICON[o.dataset.a]||'bolt'); o.onclick=()=>{ ruCtx.action=o.dataset.a; buildActPick(); }; });
+      applyActVis(); }
+    function applyActVis(){ const nf=ruCtx.action==='notify';
+      g('ruDevField').style.display=nf?'none':'block'; g('ruNotifyField').style.display=nf?'block':'none'; }
+    function buildNotify(){
+      const sel=g('ruNfService'), list=notifyServices(); sel.innerHTML='';
+      if(!list.includes(ruCtx.nfService)) list.push(ruCtx.nfService);
+      list.forEach(s=>{ const o=document.createElement('option'); o.value=s;
+        o.textContent=s==='persistent_notification.create'?'Thông báo trong HA (persistent)':s; sel.appendChild(o); });
+      sel.value=ruCtx.nfService; sel.onchange=()=>{ ruCtx.nfService=sel.value; };
+      const ta=g('ruNfMessage'); ta.value=ruCtx.nfMessage; ta.oninput=()=>{ ruCtx.nfMessage=ta.value; };
+      const ph=g('ruPhList'); ph.innerHTML='';
+      ['{power}','{pv}','{soc}','{load}','{time}'].forEach(p=>{ const c=document.createElement('code'); c.textContent=p;
+        c.onclick=()=>{ ta.value+=(ta.value.endsWith(' ')||!ta.value?'':' ')+p; ruCtx.nfMessage=ta.value; }; ph.appendChild(c); }); }
     function buildDevList(){ const list=g('ruDevList'); list.innerHTML='';
       const doms=['switch','light','input_boolean','fan','climate'];
       const ents=Object.keys(S()).filter(e=>doms.includes(e.split('.')[0])).sort();
@@ -603,7 +634,10 @@ class SolarInverterPanel extends HTMLElement {
     g('ruSaveBtn').onclick=()=>{
       const name=g('ruName').value.trim()||TRIGGERS[ruCtx.trig].label;
       const thresh=parseFloat(g('ruThresh').value)||TRIGGERS[ruCtx.trig].def;
-      const data={ name, enabled:true, action:ruCtx.action, entities:[...ruCtx.entities], cooldownSec:ruCtx.coolSec, trig:{ type:ruCtx.trig, threshold:thresh, forSec:ruCtx.forSec } };
+      const data={ name, enabled:true, action:ruCtx.action, entities:[...ruCtx.entities], cooldownSec:ruCtx.coolSec,
+        notifyService:ruCtx.nfService, notifyMessage:ruCtx.nfMessage.trim(),
+        trig:{ type:ruCtx.trig, threshold:thresh, forSec:ruCtx.forSec } };
+      if(data.action==='notify' && !data.notifyMessage) data.notifyMessage='Điều kiện "'+name+'" xảy ra lúc {time}.';
       if(ruCtx.rule) Object.assign(ruCtx.rule,data); else { data.id=rid(); state.rules.push(data); }
       saveCfg(); renderRules(); closeModal('ruleModal');
     };
@@ -663,7 +697,16 @@ class SolarInverterPanel extends HTMLElement {
         y+='\n- alias: "Báo khi ngừng lấy điện lưới"\n  trigger:\n    - platform: numeric_state\n      entity_id: '+state.map.grid+'\n      '+dir+'\n      for:\n        seconds: '+Math.max(30,n.forSec)+'\n';
         y+='  action:\n    - service: '+n.service+'\n      data:\n        title: "Điện lưới"\n        message: "Hệ đã tự cấp trở lại."\n  mode: single\n'; }
       return y; }
+    function msgTpl(m){ return (m||'')
+      .replace(/\{power\}/g,'{{ (states("'+state.map.grid+'")|float(0))|abs|round(0) }} W')
+      .replace(/\{soc\}/g,'{{ states("'+state.map.soc+'") }}%')
+      .replace(/\{pv\}/g,state.map.pv?('{{ states("'+state.map.pv+'") }} W'):'–')
+      .replace(/\{load\}/g,state.map.load?('{{ states("'+state.map.load+'") }} W'):'–')
+      .replace(/\{time\}/g,'{{ now().strftime("%H:%M") }}'); }
     function ruleYaml(rule){ let y='# === '+rule.name+' ===\n- alias: "'+rule.name.replace(/"/g,'\\"')+'"\n  trigger:\n'+trigYaml(rule.trig,4);
+      if(rule.action==='notify'){
+        y+='  action:\n    - service: '+rule.notifyService+'\n      data:\n        title: "'+rule.name.replace(/"/g,'\\"')+'"\n        message: "'+msgTpl(rule.notifyMessage).replace(/"/g,'\\"')+'"\n  mode: single\n';
+        return y; }
       y+='  action:\n    - service: homeassistant.'+rule.action+'\n      target:\n        entity_id:\n';
       rule.entities.forEach(e=>y+='          - '+e+'\n'); y+='  mode: single\n'; return y; }
     function openYaml(kind){ let out='';

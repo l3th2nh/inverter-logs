@@ -33,7 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "inverter_bridge"
 PANEL_URL = "/inverter_bridge/panel.js"
-PANEL_VER = "7"  # tăng mỗi lần sửa panel để chống cache
+PANEL_VER = "8"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
 ENGINE_INTERVAL = timedelta(seconds=10)
@@ -255,10 +255,20 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
             float(rule.get("cooldownSec", 0) or 0),
         )
         if res == "fire":
-            ents = rule.get("entities", [])
             action = rule.get("action", "turn_off")
-            if ents:
-                await _call(hass, f"homeassistant.{action}", {"entity_id": ents})
+            if action == "notify":
+                service = rule.get("notifyService") or "persistent_notification.create"
+                sdata = {
+                    "title": rule.get("name") or "Hệ điện mặt trời",
+                    "message": _render_msg(rule.get("notifyMessage", ""), r),
+                }
+                if service == "persistent_notification.create":
+                    sdata["notification_id"] = f"inverter_bridge_rule_{rid}"
+                await _call(hass, service, sdata)
+            else:
+                ents = rule.get("entities", [])
+                if ents:
+                    await _call(hass, f"homeassistant.{action}", {"entity_id": ents})
 
 
 # ============================ REST endpoint ============================
