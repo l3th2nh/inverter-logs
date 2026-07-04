@@ -33,7 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "inverter_bridge"
 PANEL_URL = "/inverter_bridge/panel.js"
-PANEL_VER = "11"  # tăng mỗi lần sửa panel để chống cache
+PANEL_VER = "12"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
 ENGINE_INTERVAL = timedelta(seconds=10)
@@ -120,6 +120,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         hass.http.register_view(InverterDataView())
 
+    # Phiên bản (để panel hiển thị) — lấy từ manifest, không hardcode.
+    try:
+        from homeassistant.loader import async_get_integration
+        _version = str((await async_get_integration(hass, DOMAIN)).version)
+    except Exception:  # noqa: BLE001
+        _version = ""
+
     # Panel trên sidebar
     if PANEL_PATH not in hass.data.get(frontend.DATA_PANELS, {}):
         await panel_custom.async_register_panel(
@@ -130,7 +137,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             sidebar_title="Hệ điện mặt trời",
             sidebar_icon="mdi:solar-power-variant",
             require_admin=False,
-            config={},
+            config={"version": _version},
         )
 
     if not data.get("ws_registered"):
