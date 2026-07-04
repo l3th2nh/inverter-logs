@@ -33,7 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "inverter_bridge"
 PANEL_URL = "/inverter_bridge/panel.js"
-PANEL_VER = "8"  # tăng mỗi lần sửa panel để chống cache
+PANEL_VER = "9"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
 ENGINE_INTERVAL = timedelta(seconds=10)
@@ -48,6 +48,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data["store"] = store
     data.setdefault("runtime", {})
     data["config"] = await store.async_load() or {}
+
+    # Di trú: tab "Thông báo" cũ -> 1 quy tắc notify (thống nhất vào Tự động hóa,
+    # không mất thông báo đang bật). Chạy 1 lần vì sau đó 'notif' bị xóa khỏi config.
+    _legacy = data["config"].pop("notif", None)
+    if _legacy is not None:
+        _rules = data["config"].setdefault("rules", [])
+        if not any(rr.get("_from_notif") for rr in _rules):
+            _rules.append({
+                "id": "notif_migrated",
+                "_from_notif": True,
+                "name": "Báo khi bắt đầu lấy điện lưới",
+                "enabled": bool(_legacy.get("enabled")),
+                "action": "notify",
+                "notifyService": _legacy.get("service", "persistent_notification.create"),
+                "notifyMessage": _legacy.get("message", ""),
+                "entities": [],
+                "cooldownSec": _legacy.get("cooldownSec", 300),
+                "trig": {
+                    "type": "grid_import_start",
+                    "threshold": _legacy.get("threshold", 50),
+                    "forSec": _legacy.get("forSec", 30),
+                },
+            })
+        await store.async_save(data["config"])
 
     # Nguồn dữ liệu Modbus TCP (đọc thẳng que WiFi Solis). Mặc định dùng IP .89 nếu
     # người dùng chưa điền -> chạy ngay, không cần bấm Configure (zero-config).
@@ -213,33 +237,8 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
     runtime = data.setdefault("runtime", {})
     r = _readings(hass, cfg)
 
-    # 1) Thông báo khi bắt đầu lấy điện lưới
-    notif = cfg.get("notif", {})
-    if notif.get("enabled"):
-        thr = float(notif.get("threshold", 50) or 0)
-        res = _handle(
-            runtime, "notif",
-            r["grid_import"] is not None and r["grid_import"] > thr,
-            float(notif.get("forSec", 30) or 0),
-            float(notif.get("cooldownSec", 300) or 0),
-        )
-        service = notif.get("service", "persistent_notification.create")
-        if res == "fire":
-            await _call(hass, service, {
-                "title": "Cảnh báo điện lưới",
-                "message": _render_msg(notif.get("message", ""), r),
-                "notification_id": "inverter_bridge_grid",
-            })
-        elif res == "reset" and notif.get("notifyStop"):
-            await _call(hass, service, {
-                "title": "Điện lưới",
-                "message": "Hệ đã tự cấp trở lại.",
-                "notification_id": "inverter_bridge_grid",
-            })
-    else:
-        runtime.pop("notif", None)
-
-    # 2) Quy tắc tự động (tắt/bật thiết bị)
+    # Quy tắc tự động (tắt/bật thiết bị hoặc gửi thông báo).
+    # (Tab "Thông báo" riêng đã bỏ; thông báo lấy lưới nay là 1 quy tắc.)
     for rule in cfg.get("rules", []):
         rid = rule.get("id")
         if not rid:
@@ -304,7 +303,7 @@ class InverterDataView(HomeAssistantView):
         cfg = hass.data.get(DOMAIN, {}).get("config") or {}
         r = _readings(hass, cfg)
         gi = r["grid_import"]
-        thr = float((cfg.get("notif") or {}).get("threshold", 50) or 0)
+        thr = 50.0  # ngưỡng bỏ qua nhiễu để phân loại "importing"
         if gi is None:
             grid_status = "unknown"
         elif gi > thr:

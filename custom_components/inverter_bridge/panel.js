@@ -237,7 +237,7 @@ const SHELL = `
 <div class="wrap">
   <div class="topbar">
     <button class="icon-btn" id="menuBtn" title="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
-    <div class="brand"><h1>Hệ điện mặt trời</h1><span class="sub">Giám sát biến tần · thông báo · tự động hóa</span></div>
+    <div class="brand"><h1>Hệ điện mặt trời</h1><span class="sub">Giám sát biến tần · tự động hóa</span></div>
     <button class="icon-btn" id="settingsBtn" title="Ánh xạ cảm biến"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   </div>
   <div class="hero">
@@ -259,45 +259,7 @@ const SHELL = `
       <div class="node n-hub"><div class="hub-core" id="hubCore"></div></div>
     </div>
   </div>
-  <div class="seg" id="seg">
-    <button data-p="notif" class="active"></button>
-    <button data-p="auto"></button>
-  </div>
-  <div class="panel-view show" id="panel-notif">
-    <div class="card">
-      <div class="c-head">
-        <div class="c-ic" id="notifHeadIc"></div>
-        <div class="c-tt"><h3>Thông báo khi bắt đầu lấy điện lưới</h3>
-          <p>Gửi thông báo ngay khi hệ chuyển từ tự cấp (mặt trời + pin) sang phải nhập điện từ lưới.</p></div>
-        <div class="switch" id="notifToggle"><div class="knob"></div></div>
-      </div>
-      <div style="margin-top:12px"><span class="live-chip" id="notifLiveChip"><span class="bdot"></span><span id="notifLiveTxt">–</span></span></div>
-      <div class="settings-body" id="notifBody">
-        <div class="divider"></div>
-        <div class="row"><div class="rl"><div class="k">Ngưỡng bỏ qua nhiễu</div><div class="d">Chỉ báo khi công suất nhập vượt mức này — tránh báo khi mây thoáng qua.</div></div>
-          <div class="rc"><div class="num"><input type="number" id="nfThreshold" min="0" step="10" value="50"><span class="unit">W</span></div></div></div>
-        <div class="row"><div class="rl"><div class="k">Phải kéo dài</div><div class="d">Trạng thái lấy lưới phải duy trì đủ lâu mới báo.</div></div>
-          <div class="rc"><select class="sel" id="nfFor"><option value="0">Ngay lập tức</option><option value="10">10 giây</option><option value="30" selected>30 giây</option><option value="60">1 phút</option><option value="120">2 phút</option></select></div></div>
-        <div class="row"><div class="rl"><div class="k">Nghỉ giữa 2 lần báo</div><div class="d">Khoảng thời gian tối thiểu trước khi báo lại.</div></div>
-          <div class="rc"><select class="sel" id="nfCooldown"><option value="0">Không giới hạn</option><option value="300" selected>5 phút</option><option value="600">10 phút</option><option value="1800">30 phút</option><option value="3600">1 giờ</option></select></div></div>
-        <div class="row"><div class="rl"><div class="k">Gửi tới</div><div class="d">Dịch vụ notify trong Home Assistant.</div></div>
-          <div class="rc"><select class="sel" id="nfService"></select></div></div>
-        <div class="row"><div class="rl"><div class="k">Báo cả khi ngừng lấy lưới</div><div class="d">Thông báo lần nữa khi hệ tự cấp lại.</div></div>
-          <div class="rc"><div class="switch" id="nfStopToggle"><div class="knob"></div></div></div></div>
-        <div class="divider"></div>
-        <label style="display:block;font-size:13px;color:var(--muted);font-weight:500;margin-bottom:7px">Nội dung thông báo</label>
-        <textarea class="msg-input" id="nfMessage">Hệ đang lấy {power} từ lưới (PV {pv}, pin {soc}). Lúc {time}.</textarea>
-        <div class="placeholders" id="phList"></div>
-        <div class="notif-preview"><div class="np-ic"></div><div style="min-width:0">
-          <div class="np-t">Cảnh báo điện lưới</div><div class="np-m" id="pvMsg"></div><div class="np-tag" id="pvTag"></div></div></div>
-        <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
-          <button class="btn tiny" id="nfTestBtn"></button><button class="btn tiny" id="nfYamlBtn"></button></div>
-      </div>
-    </div>
-    <div class="hint-box"><span class="hb-ic"></span>
-      <div><b>Tự động chạy nền 24/7</b> qua tích hợp Inverter Bridge — bật công tắc + Lưu là có hiệu lực ngay, không cần mở trang. Nút <b>Thử thông báo</b> để test, <b>Xuất YAML</b> chỉ để tham khảo/tùy biến nâng cao.</div></div>
-  </div>
-  <div class="panel-view" id="panel-auto">
+  <div id="panel-auto">
     <div class="rules-head"><h2>Quy tắc tự động</h2><span class="meta" id="rulesMeta"></span>
       <button class="btn tiny" id="rulesYamlBtn"></button><button class="btn tiny primary" id="addRuleBtn"></button></div>
     <div id="rulesList"></div>
@@ -415,8 +377,6 @@ class SolarInverterPanel extends HTMLElement {
     const state = {
       map:{ grid:'sensor.ib_grid_power', gridSign:'import_pos', soc:'sensor.ib_battery_soc',
             batt:'sensor.ib_battery_power', pv:'sensor.ib_pv_power', load:'sensor.ib_house_load_power' },
-      notif:{ enabled:false, threshold:50, forSec:30, cooldownSec:300, service:'persistent_notification.create',
-              notifyStop:false, message:'Hệ đang lấy {power} từ lưới (PV {pv}, pin {soc}). Lúc {time}.' },
       rules:[]
     };
     const runtime={};
@@ -446,7 +406,6 @@ class SolarInverterPanel extends HTMLElement {
       try{
         const d=await self._hass.connection.sendMessagePromise({type:'inverter_bridge/get'});
         if(d&&d.map) state.map=Object.assign(state.map,d.map);
-        if(d&&d.notif) state.notif=Object.assign(state.notif,d.notif);
         if(d&&Array.isArray(d.rules)) state.rules=d.rules;
       }catch(e){}
     }
@@ -470,7 +429,7 @@ class SolarInverterPanel extends HTMLElement {
       if(changed) saveCfg();
     }
     async function saveCfg(){
-      try{ await self._hass.connection.sendMessagePromise({type:'inverter_bridge/save', config:{map:state.map,notif:state.notif,rules:state.rules}}); }
+      try{ await self._hass.connection.sendMessagePromise({type:'inverter_bridge/save', config:{map:state.map,rules:state.rules}}); }
       catch(e){}
     }
 
@@ -493,7 +452,7 @@ class SolarInverterPanel extends HTMLElement {
       battEl.style.setProperty('--nc', soc!=null&&soc<25?'var(--grid-in)':'var(--batt)');
       const gi=r.gridImport, gEl=g('nodeGrid');
       g('vGrid').textContent = gi!=null?fmtW(Math.abs(gi)):'– W';
-      const importing=gi!=null&&gi>(state.notif.threshold||0), exporting=gi!=null&&gi<-20;
+      const importing=gi!=null&&gi>50, exporting=gi!=null&&gi<-20;
       g('vGridSub').textContent = importing?'Đang nhập':(exporting?'Đang bán':(gi!=null?'Cân bằng':''));
       gEl.classList.toggle('on', gi!=null&&(importing||exporting));
       gEl.style.setProperty('--nc', importing?'var(--grid-in)':(exporting?'var(--grid-out)':'var(--grid-in)'));
@@ -508,38 +467,7 @@ class SolarInverterPanel extends HTMLElement {
       else if(exporting){ badge.classList.add('exporting'); txt.innerHTML='ĐANG BÁN LƯỚI · <b>'+fmtW(-gi)+'</b>'; }
       else { badge.classList.add('self'); txt.textContent='KHÔNG LẤY LƯỚI · tự cấp'; }
       g('refreshed').textContent='cập nhật '+new Date().toLocaleTimeString('vi-VN');
-      const chip=g('notifLiveChip'), ctxt=g('notifLiveTxt'); chip.className='live-chip';
-      if(gi==null) ctxt.textContent='Chưa ánh xạ cảm biến lưới';
-      else if(importing){ chip.classList.add('hot'); ctxt.textContent='Hiện tại: đang lấy '+fmtW(gi)+' từ lưới'; }
-      else { chip.classList.add('cool'); ctxt.textContent='Hiện tại: không lấy lưới (tự cấp)'; }
     }
-
-    /* ---------- notif panel ---------- */
-    function renderNotif(){
-      g('notifToggle').classList.toggle('on',state.notif.enabled);
-      g('notifBody').classList.toggle('collapsed',!state.notif.enabled);
-      g('nfThreshold').value=state.notif.threshold;
-      g('nfFor').value=String(state.notif.forSec);
-      g('nfCooldown').value=String(state.notif.cooldownSec);
-      g('nfStopToggle').classList.toggle('on',state.notif.notifyStop);
-      g('nfMessage').value=state.notif.message;
-      fillNotifyServices(); renderPreview();
-    }
-    function fillNotifyServices(){
-      const sel=g('nfService'), list=notifyServices(); sel.innerHTML='';
-      list.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; if(s===state.notif.service)o.selected=true; sel.appendChild(o); });
-      if(!list.includes(state.notif.service)){ const o=document.createElement('option'); o.value=state.notif.service; o.textContent=state.notif.service; o.selected=true; sel.appendChild(o); }
-    }
-    function renderMessage(tpl){ const r=readings();
-      return tpl.replace(/\{power\}/g,r.gridImport!=null?fmtW(Math.max(0,r.gridImport)):'– W')
-        .replace(/\{pv\}/g,fmtW(r.pv)).replace(/\{soc\}/g,r.soc!=null?Math.round(r.soc)+'%':'–')
-        .replace(/\{load\}/g,fmtW(r.load)).replace(/\{time\}/g,new Date().toLocaleTimeString('vi-VN')); }
-    function renderMessagePlain(tpl){ const r=readings();
-      return tpl.replace(/\{power\}/g,r.gridImport!=null?Math.round(Math.max(0,r.gridImport))+' W':'–')
-        .replace(/\{pv\}/g,r.pv!=null?Math.round(r.pv)+' W':'–').replace(/\{soc\}/g,r.soc!=null?Math.round(r.soc)+'%':'–')
-        .replace(/\{load\}/g,r.load!=null?Math.round(r.load)+' W':'–').replace(/\{time\}/g,new Date().toLocaleTimeString('vi-VN')); }
-    function renderPreview(){ g('pvMsg').textContent=renderMessage(g('nfMessage').value);
-      g('pvTag').textContent='→ '+state.notif.service+'  ·  '+fmtName(state.map.grid); }
 
     /* ---------- rules ---------- */
     function fmtDur(s){ if(s>=3600)return (s/3600)+' giờ'; if(s>=60)return (s/60)+' phút'; return s+'s'; }
@@ -685,18 +613,6 @@ class SolarInverterPanel extends HTMLElement {
       else { ent=state.map.load; cmp='above: '+th; }
       let y=p+'- platform: numeric_state\n'+p+'    entity_id: '+(ent||'sensor.CHUA_ANH_XA')+'\n'+p+'    '+cmp+'\n';
       if(forSec>0) y+=p+'    for:\n'+p+'      seconds: '+forSec+'\n'; return y; }
-    function notifYaml(){ const n=state.notif;
-      const msg=n.message.replace(/\{power\}/g,'{{ (states("'+state.map.grid+'")|float(0))|abs|round(0) }} W')
-        .replace(/\{soc\}/g,'{{ states("'+state.map.soc+'") }}%')
-        .replace(/\{pv\}/g,state.map.pv?('{{ states("'+state.map.pv+'") }} W'):'–')
-        .replace(/\{load\}/g,state.map.load?('{{ states("'+state.map.load+'") }} W'):'–')
-        .replace(/\{time\}/g,'{{ now().strftime("%H:%M") }}');
-      let y='# === Thông báo khi bắt đầu lấy điện lưới ===\n- alias: "Báo khi bắt đầu lấy điện lưới"\n  trigger:\n'+gridTrigYaml(n.threshold,n.forSec,4);
-      y+='  action:\n    - service: '+n.service+'\n      data:\n        title: "Cảnh báo điện lưới"\n        message: "'+msg.replace(/"/g,'\\"')+'"\n  mode: single\n';
-      if(n.notifyStop){ const dir=state.map.gridSign==='import_pos'?('below: '+n.threshold):('above: -'+n.threshold);
-        y+='\n- alias: "Báo khi ngừng lấy điện lưới"\n  trigger:\n    - platform: numeric_state\n      entity_id: '+state.map.grid+'\n      '+dir+'\n      for:\n        seconds: '+Math.max(30,n.forSec)+'\n';
-        y+='  action:\n    - service: '+n.service+'\n      data:\n        title: "Điện lưới"\n        message: "Hệ đã tự cấp trở lại."\n  mode: single\n'; }
-      return y; }
     function msgTpl(m){ return (m||'')
       .replace(/\{power\}/g,'{{ (states("'+state.map.grid+'")|float(0))|abs|round(0) }} W')
       .replace(/\{soc\}/g,'{{ states("'+state.map.soc+'") }}%')
@@ -709,10 +625,9 @@ class SolarInverterPanel extends HTMLElement {
         return y; }
       y+='  action:\n    - service: homeassistant.'+rule.action+'\n      target:\n        entity_id:\n';
       rule.entities.forEach(e=>y+='          - '+e+'\n'); y+='  mode: single\n'; return y; }
-    function openYaml(kind){ let out='';
-      if(kind==='notif') out=notifYaml();
-      else { out=state.rules.filter(r=>r.enabled).map(ruleYaml).join('\n'); if(!out)out='# Chưa có quy tắc nào đang bật'; }
-      g('yamlTitle').textContent=kind==='notif'?'YAML · Thông báo lấy lưới':'YAML · Quy tắc tự động';
+    function openYaml(){ let out=state.rules.filter(r=>r.enabled).map(ruleYaml).join('\n');
+      if(!out)out='# Chưa có quy tắc nào đang bật';
+      g('yamlTitle').textContent='YAML · Quy tắc tự động';
       g('yamlOut').textContent=out; g('copyYamlBtn').innerHTML=icon('copy')+' Sao chép'; showModal('yamlModal'); }
     g('copyYamlBtn').onclick=()=>{ const txt=g('yamlOut').textContent; const done=()=>{ g('copyYamlBtn').innerHTML=icon('check')+' Đã sao chép'; };
       if(navigator.clipboard) navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done)); else fallbackCopy(txt,done); };
@@ -742,7 +657,7 @@ class SolarInverterPanel extends HTMLElement {
     g('mapSaveBtn').onclick=()=>{
       state.map.grid=g('mapGrid').value; state.map.soc=g('mapSoc').value; state.map.batt=g('mapBatt').value;
       state.map.pv=g('mapPv').value; state.map.load=g('mapLoad').value;
-      saveCfg(); renderHero(); renderPreview(); closeModal('mapModal');
+      saveCfg(); renderHero(); closeModal('mapModal');
     };
 
     /* ---------- modal helpers ---------- */
@@ -755,24 +670,8 @@ class SolarInverterPanel extends HTMLElement {
     /* ---------- bindings ---------- */
     g('menuBtn').onclick=()=>self.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));
     g('settingsBtn').onclick=openMapModal;
-    g('notifToggle').onclick=()=>{ state.notif.enabled=!state.notif.enabled; delete runtime['notif']; saveCfg(); renderNotif(); };
-    g('nfStopToggle').onclick=()=>{ state.notif.notifyStop=!state.notif.notifyStop; saveCfg(); g('nfStopToggle').classList.toggle('on',state.notif.notifyStop); };
-    g('nfThreshold').oninput=e=>{ state.notif.threshold=parseFloat(e.target.value)||0; saveCfg(); };
-    g('nfFor').onchange=e=>{ state.notif.forSec=parseInt(e.target.value); delete runtime['notif']; saveCfg(); };
-    g('nfCooldown').onchange=e=>{ state.notif.cooldownSec=parseInt(e.target.value); saveCfg(); };
-    g('nfService').onchange=e=>{ state.notif.service=e.target.value; saveCfg(); renderPreview(); };
-    g('nfMessage').oninput=e=>{ state.notif.message=e.target.value; saveCfg(); renderPreview(); };
-    g('nfTestBtn').onclick=()=>{ toast('alert','bell','Thử thông báo',renderMessage(state.notif.message)); sendNotify(state.notif.service,'Cảnh báo điện lưới (thử)',renderMessagePlain(state.notif.message)); };
-    g('nfYamlBtn').onclick=()=>openYaml('notif');
-    g('rulesYamlBtn').onclick=()=>openYaml('rules');
+    g('rulesYamlBtn').onclick=()=>openYaml();
     g('addRuleBtn').onclick=()=>openRuleModal(null);
-    qsa('#seg button').forEach(b=>b.onclick=()=>{ qsa('#seg button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
-      qsa('.panel-view').forEach(p=>p.classList.remove('show')); g('panel-'+b.dataset.p).classList.add('show'); });
-
-    // placeholder chips
-    (function(){ const el=g('phList'); el.innerHTML='';
-      ['{power}','{pv}','{soc}','{load}','{time}'].forEach(p=>{ const c=document.createElement('code'); c.textContent=p;
-        c.onclick=()=>{ const ta=g('nfMessage'); ta.value+=(ta.value.endsWith(' ')||!ta.value?'':' ')+p; state.notif.message=ta.value; saveCfg(); renderPreview(); }; el.appendChild(c); }); })();
 
     // icons + labels tĩnh
     (function(){
@@ -781,12 +680,7 @@ class SolarInverterPanel extends HTMLElement {
       root.querySelector('#nodeBatt .disc').innerHTML=triIcon('battery_below');
       root.querySelector('#nodeLoad .disc').innerHTML=triIcon('load_above');
       g('hubCore').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5 5.5 13h5l-1.5 8.5L18.5 11h-5z"/></svg>';
-      g('notifHeadIc').innerHTML=icon('bell');
-      root.querySelector('.notif-preview .np-ic').innerHTML=icon('bell');
       qsa('.hint-box .hb-ic').forEach(e=>e.innerHTML=icon('info'));
-      const sb=qsa('#seg button'); sb[0].innerHTML=icon('bell')+' Thông báo'; sb[1].innerHTML=icon('bolt')+' Tự động hóa';
-      g('nfTestBtn').innerHTML=icon('bell')+' Thử thông báo';
-      g('nfYamlBtn').innerHTML=icon('code')+' Xuất YAML';
       g('rulesYamlBtn').innerHTML=icon('code')+' Xuất YAML';
       g('addRuleBtn').innerHTML=icon('plus')+' Thêm quy tắc';
     })();
@@ -806,7 +700,7 @@ class SolarInverterPanel extends HTMLElement {
     (async()=>{
       await loadCfg();
       reconcileMap();   // tự động điền ánh xạ, không cần thao tác tay
-      renderHero(); renderNotif(); renderRules();
+      renderHero(); renderRules();
       this._ready=true; this._booting=false;
     })();
   }
