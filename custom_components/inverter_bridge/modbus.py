@@ -42,8 +42,11 @@ REGISTERS = [
     ("inverter_temperature", "Inverter Temperature", 33093, 1, "S16", 0.1,  "°C",  SensorDeviceClass.TEMPERATURE, _M),
     ("daily_generation",     "Daily Generation",     33035, 1, "U16", 0.1,  "kWh", SensorDeviceClass.ENERGY,      _T),
     ("total_generation",     "Total Generation",     33029, 2, "U32", 1.0,  "kWh", SensorDeviceClass.ENERGY,      _T),
-    ("total_imported",       "Total Imported",       33169, 2, "U32", 1.0,  "kWh", SensorDeviceClass.ENERGY,      _T),
-    ("total_battery_charge", "Total Battery Charge", 33161, 2, "U32", 1.0,  "kWh", SensorDeviceClass.ENERGY,      _T),
+    ("total_imported",         "Total Imported",         33169, 2, "U32", 1.0, "kWh", SensorDeviceClass.ENERGY, _T),
+    ("total_battery_charge",   "Total Battery Charge",   33161, 2, "U32", 1.0, "kWh", SensorDeviceClass.ENERGY, _T),
+    ("total_battery_discharge","Total Battery Discharge",33165, 2, "U32", 1.0, "kWh", SensorDeviceClass.ENERGY, _T),
+    ("battery_charge_today",   "Battery Charge Today",   33163, 1, "U16", 0.1, "kWh", SensorDeviceClass.ENERGY, _T),
+    ("battery_discharge_today","Battery Discharge Today",33167, 1, "U16", 0.1, "kWh", SensorDeviceClass.ENERGY, _T),
 ]
 
 # Ánh xạ mặc định cho panel/engine (tự seed để không phải cấu hình tay).

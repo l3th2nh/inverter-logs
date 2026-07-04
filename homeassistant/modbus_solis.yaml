@@ -233,3 +233,40 @@
       device_class: energy
       state_class: total_increasing
       scan_interval: 120
+
+    - name: ib_total_battery_discharge
+      unique_id: ib_total_battery_discharge
+      slave: 1
+      input_type: input
+      address: 33165
+      data_type: uint32
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+      scan_interval: 120
+
+    - name: ib_battery_charge_today
+      unique_id: ib_battery_charge_today
+      slave: 1
+      input_type: input
+      address: 33163
+      data_type: uint16
+      scale: 0.1
+      precision: 1
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+      scan_interval: 60
+
+    - name: ib_battery_discharge_today
+      unique_id: ib_battery_discharge_today
+      slave: 1
+      input_type: input
+      address: 33167
+      data_type: uint16
+      scale: 0.1
+      precision: 1
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: total_increasing
+      scan_interval: 60
