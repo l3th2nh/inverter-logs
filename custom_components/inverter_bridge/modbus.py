@@ -49,6 +49,11 @@ REGISTERS = [
     ("battery_discharge_today","Battery Discharge Today",33167, 1, "U16", 0.1, "kWh", SensorDeviceClass.ENERGY, _T),
 ]
 
+# Đảo dấu để theo quy ước trực quan: DƯƠNG = SẠC (nạp), ÂM = XẢ.
+# Solis trả battery_power/current DƯƠNG khi ĐANG XẢ (kiểm chứng: PV=0, lưới=0, tải>0
+# mà battery_power dương + SOC đang tụt). Panel/engine giả định dương=sạc nên phải đảo.
+INVERT_SIGN = {"battery_power", "battery_current"}
+
 # Ánh xạ mặc định cho panel/engine (tự seed để không phải cấu hình tay).
 DEFAULT_MAP = {
     "grid": "sensor.ib_grid_power",
@@ -109,7 +114,10 @@ class SolisModbusCoordinator(DataUpdateCoordinator):
         out: dict[str, float | None] = {}
         for key, _name, reg, count, typ, scale, *_ in REGISTERS:
             regs = await self._read(client, reg, count)
-            out[key] = None if regs is None else _decode(regs, typ, scale)
+            val = None if regs is None else _decode(regs, typ, scale)
+            if val is not None and key in INVERT_SIGN:
+                val = -val
+            out[key] = val
         if all(v is None for v in out.values()):
             raise UpdateFailed("Que Modbus không trả về thanh ghi nào")
         return out
