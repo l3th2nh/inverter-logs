@@ -33,11 +33,12 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "inverter_bridge"
 PANEL_URL = "/inverter_bridge/panel.js"
-PANEL_VER = "10"  # tăng mỗi lần sửa panel để chống cache
+PANEL_VER = "11"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
 ENGINE_INTERVAL = timedelta(seconds=10)
 PLATFORMS = [Platform.SENSOR]
+LOG_LIMIT = 200  # số dòng nhật ký giữ lại
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -48,6 +49,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data["store"] = store
     data.setdefault("runtime", {})
     data["config"] = await store.async_load() or {}
+
+    # Nhật ký hoạt động (lưu bền, sống lại sau restart).
+    if "logs_store" not in data:
+        logs_store = Store(hass, 1, f"{DOMAIN}_logs")
+        data["logs_store"] = logs_store
+        data["logs"] = await logs_store.async_load() or []
 
     # Di trú: tab "Thông báo" cũ -> 1 quy tắc notify (thống nhất vào Tự động hóa,
     # không mất thông báo đang bật). Chạy 1 lần vì sau đó 'notif' bị xóa khỏi config.
@@ -130,6 +137,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data["ws_registered"] = True
         websocket_api.async_register_command(hass, ws_get)
         websocket_api.async_register_command(hass, ws_save)
+        websocket_api.async_register_command(hass, ws_logs)
+        websocket_api.async_register_command(hass, ws_logs_clear)
 
     # Engine chạy nền định kỳ (chỉ đăng ký 1 lần)
     if not data.get("engine_unsub"):
@@ -218,9 +227,10 @@ async def _persistent(hass: HomeAssistant, title: str, message: str, nid: str) -
 
 async def _send_notification(
     hass: HomeAssistant, service: str, title: str, message: str, rid: str
-) -> None:
+) -> tuple[bool, str]:
     """Gửi thông báo linh hoạt, chịu được nhiều kiểu dịch vụ HA; luôn có fallback.
 
+    Trả về (ok, chi tiết) để ghi nhật ký.
     - persistent_notification.create  -> hiện trong HA.
     - notify.<x> kiểu cũ (mobile_app_x, notify...) -> nhận {title, message} trực tiếp.
     - notify entity (HA mới) -> notify.send_message + target: entity_id (ra điện thoại).
@@ -229,7 +239,7 @@ async def _send_notification(
     nid = f"inverter_bridge_rule_{rid}"
     if service.startswith("persistent_notification"):
         await _persistent(hass, title, message, nid)
-        return
+        return True, "Đã hiện thông báo trong HA"
     domain, _, name = service.partition(".")
     try:
         # notify.<x> kiểu cũ (không phải send_message)
@@ -238,7 +248,7 @@ async def _send_notification(
             await hass.services.async_call(
                 "notify", name, {"title": title, "message": message}, blocking=True
             )
-            return
+            return True, f"Đã gửi qua {service}"
         # notify entity qua send_message + target (mobile_app trên HA mới)
         if service.startswith("notify.") and hass.states.get(service) is not None \
                 and hass.services.has_service("notify", "send_message"):
@@ -247,13 +257,13 @@ async def _send_notification(
                 {"title": title, "message": message},
                 blocking=True, target={"entity_id": service},
             )
-            return
+            return True, f"Đã gửi tới {service}"
         # domain khác người dùng tự nhập
         if domain and name and domain not in ("notify",) and hass.services.has_service(domain, name):
             await hass.services.async_call(
                 domain, name, {"title": title, "message": message}, blocking=True
             )
-            return
+            return True, f"Đã gọi {service}"
         raise ValueError(
             f"dịch vụ '{service}' không dùng được (chọn notify.mobile_app_… hoặc để 'trong HA')"
         )
@@ -262,6 +272,30 @@ async def _send_notification(
         await _persistent(
             hass, title, f"{message}\n\n(Không gửi được qua '{service}'. Sửa quy tắc chọn dịch vụ khác.)", nid
         )
+        return False, f"Lỗi '{service}': {err}. Đã hiện trong HA thay thế."
+
+
+async def _call_ok(hass: HomeAssistant, service: str, service_data: dict) -> tuple[bool, str]:
+    """Gọi service (chờ kết quả) và trả (ok, chi tiết) để ghi nhật ký."""
+    if "." not in service:
+        return False, "dịch vụ không hợp lệ"
+    domain, name = service.split(".", 1)
+    try:
+        await hass.services.async_call(domain, name, service_data, blocking=True)
+        return True, "OK"
+    except Exception as err:  # noqa: BLE001
+        return False, str(err)
+
+
+def _append_log(hass: HomeAssistant, entry: dict) -> None:
+    """Ghi 1 dòng nhật ký (mới nhất lên đầu), giới hạn 200 dòng, lưu bền (debounced)."""
+    data = hass.data.setdefault(DOMAIN, {})
+    logs = data.setdefault("logs", [])
+    logs.insert(0, entry)
+    del logs[LOG_LIMIT:]
+    store = data.get("logs_store")
+    if store is not None:
+        store.async_delay_save(lambda: data.get("logs", []), 3)
 
 
 def _handle(runtime: dict, key: str, on: bool, for_sec: float, cool_sec: float):
@@ -311,17 +345,31 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
         if res == "fire":
             action = rule.get("action", "turn_off")
             if action == "notify":
-                await _send_notification(
-                    hass,
-                    rule.get("notifyService") or "persistent_notification.create",
+                service = rule.get("notifyService") or "persistent_notification.create"
+                ok, detail = await _send_notification(
+                    hass, service,
                     rule.get("name") or "Hệ điện mặt trời",
                     _render_msg(rule.get("notifyMessage", ""), r),
                     rid,
                 )
             else:
                 ents = rule.get("entities", [])
-                if ents:
-                    await _call(hass, f"homeassistant.{action}", {"entity_id": ents})
+                if not ents:
+                    ok, detail = False, "Chưa chọn thiết bị nào"
+                else:
+                    ok, detail = await _call_ok(
+                        hass, f"homeassistant.{action}", {"entity_id": ents}
+                    )
+                    verb = "Bật" if action == "turn_on" else "Tắt"
+                    detail = f"{verb} {len(ents)} thiết bị — {detail}"
+            _append_log(hass, {
+                "ts": dt_util.now().isoformat(),
+                "rule": rule.get("name") or "(không tên)",
+                "rule_id": rid,
+                "action": action,
+                "ok": ok,
+                "detail": detail,
+            })
 
 
 # ============================ REST endpoint ============================
@@ -420,6 +468,22 @@ async def ws_save(hass: HomeAssistant, connection, msg) -> None:
     await store.async_save(msg["config"])
     data["config"] = msg["config"]        # engine dùng ngay cấu hình mới
     data["runtime"] = {}                   # reset trạng thái để áp dụng thay đổi
+    connection.send_result(msg["id"], {"ok": True})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "inverter_bridge/logs"})
+@websocket_api.async_response
+async def ws_logs(hass: HomeAssistant, connection, msg) -> None:
+    connection.send_result(msg["id"], hass.data.get(DOMAIN, {}).get("logs", []))
+
+
+@websocket_api.websocket_command({vol.Required("type"): "inverter_bridge/logs_clear"})
+@websocket_api.async_response
+async def ws_logs_clear(hass: HomeAssistant, connection, msg) -> None:
+    data = hass.data.get(DOMAIN, {})
+    data["logs"] = []
+    if data.get("logs_store") is not None:
+        await data["logs_store"].async_save([])
     connection.send_result(msg["id"], {"ok": True})
 
 

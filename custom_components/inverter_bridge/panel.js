@@ -160,6 +160,18 @@ select.sel:focus,.num:focus-within{border-color:var(--grid-out)}
 .rk:hover{background:var(--panel-2);color:var(--text)}
 .rk svg{width:17px;height:17px}
 .rk.danger:hover{color:var(--danger)}
+.log-item{display:flex;gap:11px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);
+  border-left-width:3px;border-radius:12px;padding:11px 13px;margin-bottom:8px}
+.log-item.ok{border-left-color:var(--ok)}.log-item.fail{border-left-color:var(--grid-in)}
+.log-ic{flex:none;width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;margin-top:1px}
+.log-item.ok .log-ic{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.log-item.fail .log-ic{background:color-mix(in srgb,var(--grid-in) 18%,transparent);color:var(--grid-in)}
+.log-body{min-width:0;flex:1}
+.log-top{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.log-top b{font-size:14px;font-weight:600}
+.log-act{font-size:11px;color:var(--muted);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+.log-time{font-size:12px;color:var(--faint);margin-left:auto;font-family:'JetBrains Mono',monospace}
+.log-detail{font-size:12.5px;color:var(--muted);margin-top:3px;word-break:break-word}
 .empty{text-align:center;padding:44px 20px;color:var(--faint)}
 .empty h3{font-family:'Space Grotesk',sans-serif;color:var(--muted);font-weight:600;margin:0 0 8px}
 .empty p{margin:0 0 20px;font-size:14px;line-height:1.55}
@@ -259,12 +271,23 @@ const SHELL = `
       <div class="node n-hub"><div class="hub-core" id="hubCore"></div></div>
     </div>
   </div>
-  <div id="panel-auto">
+  <div class="seg" id="seg">
+    <button data-p="auto" class="active"></button>
+    <button data-p="logs"></button>
+  </div>
+  <div class="panel-view show" id="panel-auto">
     <div class="rules-head"><h2>Quy tắc tự động</h2><span class="meta" id="rulesMeta"></span>
       <button class="btn tiny" id="rulesYamlBtn"></button><button class="btn tiny primary" id="addRuleBtn"></button></div>
     <div id="rulesList"></div>
     <div class="hint-box" style="margin-top:4px"><span class="hb-ic"></span>
-      <div>Mỗi quy tắc <b>KHI</b> điều kiện xảy ra <b>THÌ</b> tắt/bật thiết bị. Tích hợp <b>tự chạy nền 24/7</b> — Lưu quy tắc là có hiệu lực ngay, kể cả khi đóng trình duyệt.</div></div>
+      <div>Mỗi quy tắc <b>KHI</b> điều kiện xảy ra <b>THÌ</b> tắt/bật thiết bị hoặc gửi thông báo. Tích hợp <b>tự chạy nền 24/7</b> — Lưu quy tắc là có hiệu lực ngay, kể cả khi đóng trình duyệt.</div></div>
+  </div>
+  <div class="panel-view" id="panel-logs">
+    <div class="rules-head"><h2>Nhật ký hoạt động</h2><span class="meta" id="logsMeta"></span>
+      <button class="btn tiny" id="logsRefreshBtn"></button><button class="btn tiny" id="logsClearBtn"></button></div>
+    <div id="logsList"></div>
+    <div class="hint-box" style="margin-top:4px"><span class="hb-ic"></span>
+      <div>Ghi lại mỗi lần quy tắc <b>chạy</b>: thời điểm, thành công/thất bại và chi tiết. Do engine nền ghi (kể cả khi đóng trình duyệt), giữ tối đa 200 dòng gần nhất.</div></div>
   </div>
 </div>
 
@@ -340,7 +363,9 @@ function icon(n){
     check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg>',
     copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
     code:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg>',
-    info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>'
+    info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>',
+    list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+    refresh:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>'
   };
   return m[n]||'';
 }
@@ -638,6 +663,28 @@ class SolarInverterPanel extends HTMLElement {
       if(navigator.clipboard) navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done)); else fallbackCopy(txt,done); };
     function fallbackCopy(txt,cb){ const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e){} ta.remove(); cb&&cb(); }
 
+    /* ---------- logs (nhật ký hoạt động) ---------- */
+    let logsCache=[];
+    async function fetchLogs(){
+      try{ logsCache=(await self._hass.connection.sendMessagePromise({type:'inverter_bridge/logs'}))||[]; }
+      catch(e){ logsCache=[]; }
+    }
+    function fmtLogTime(iso){ try{ const d=new Date(iso); return d.toLocaleTimeString('vi-VN')+' · '+d.toLocaleDateString('vi-VN'); }catch(e){ return iso||''; } }
+    function actLabel(a){ return a==='notify'?'Gửi thông báo':(a==='turn_on'?'Bật thiết bị':'Tắt thiết bị'); }
+    function renderLogs(){
+      const wrap=g('logsList'); if(!wrap) return;
+      g('logsMeta').textContent=logsCache.length?(logsCache.length+' dòng'):'';
+      if(!logsCache.length){ wrap.innerHTML='<div class="empty"><h3>Chưa có nhật ký</h3><p>Khi một quy tắc kích hoạt, kết quả (thành công/thất bại) sẽ hiện ở đây.</p></div>'; return; }
+      wrap.innerHTML=logsCache.map(e=>{ const ok=!!e.ok;
+        return '<div class="log-item '+(ok?'ok':'fail')+'"><div class="log-ic">'+(ok?'✓':'✕')+'</div>'+
+          '<div class="log-body"><div class="log-top"><b>'+esc(e.rule||'')+'</b>'+
+          '<span class="log-act">'+esc(actLabel(e.action))+'</span>'+
+          '<span class="log-time">'+esc(fmtLogTime(e.ts))+'</span></div>'+
+          '<div class="log-detail">'+esc(e.detail||'')+'</div></div></div>';
+      }).join('');
+    }
+    async function refreshLogs(){ await fetchLogs(); renderLogs(); }
+
     /* ---------- toasts ---------- */
     function toast(kind,ic,title,msg){ const wrap=g('toasts'), el=document.createElement('div'); el.className='toast '+kind;
       el.innerHTML='<div class="t-ic">'+icon(ic)+'</div><div style="min-width:0"><div class="t-t">'+esc(title)+'</div><div class="t-m">'+esc(msg)+'</div></div>';
@@ -677,6 +724,11 @@ class SolarInverterPanel extends HTMLElement {
     g('settingsBtn').onclick=openMapModal;
     g('rulesYamlBtn').onclick=()=>openYaml();
     g('addRuleBtn').onclick=()=>openRuleModal(null);
+    g('logsRefreshBtn').onclick=refreshLogs;
+    g('logsClearBtn').onclick=async()=>{ try{ await self._hass.connection.sendMessagePromise({type:'inverter_bridge/logs_clear'}); }catch(e){} logsCache=[]; renderLogs(); };
+    qsa('#seg button').forEach(b=>b.onclick=()=>{ qsa('#seg button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
+      qsa('.panel-view').forEach(p=>p.classList.remove('show')); g('panel-'+b.dataset.p).classList.add('show');
+      if(b.dataset.p==='logs') refreshLogs(); });
 
     // icons + labels tĩnh
     (function(){
@@ -688,6 +740,9 @@ class SolarInverterPanel extends HTMLElement {
       qsa('.hint-box .hb-ic').forEach(e=>e.innerHTML=icon('info'));
       g('rulesYamlBtn').innerHTML=icon('code')+' Xuất YAML';
       g('addRuleBtn').innerHTML=icon('plus')+' Thêm quy tắc';
+      const sb=qsa('#seg button'); sb[0].innerHTML=icon('bolt')+' Tự động hóa'; sb[1].innerHTML=icon('list')+' Nhật ký';
+      g('logsRefreshBtn').innerHTML=icon('refresh')+' Tải lại';
+      g('logsClearBtn').innerHTML=icon('trash')+' Xóa nhật ký';
     })();
 
     // Cập nhật theo sự kiện hass (tiết lưu ~1.5s để không chạy engine quá dày,
@@ -699,6 +754,7 @@ class SolarInverterPanel extends HTMLElement {
       if(isModalOpen()) return;
       if(!S()[state.map.grid]) reconcileMap();   // thiết bị lên trễ -> tự dò lại
       engineTick(); renderHero();
+      const lv=g('panel-logs'); if(lv&&lv.classList.contains('show')) refreshLogs();
     };
 
     // init: nạp cấu hình -> tự dò cảm biến -> render lần đầu

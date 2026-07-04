@@ -33,6 +33,9 @@ Chép `inverter_bridge/` vào `<HA config>/custom_components/` (qua Samba
   `{power} {pv} {soc} {load} {time}`.
   > Cấu hình "Thông báo lấy lưới" cũ tự chuyển thành 1 quy tắc (KHI *Bắt đầu lấy điện lưới* THÌ
   > *Gửi thông báo*) khi cập nhật — không mất, và sửa được như quy tắc thường.
+- Tab **Nhật ký** (v1.4.0): xem mọi lần quy tắc **chạy** — thời điểm, ✓ thành công / ✕ thất bại,
+  và chi tiết (dịch vụ gửi, số thiết bị, lỗi nếu có). Do engine nền ghi (kể cả khi đóng trình
+  duyệt), lưu bền qua restart, giữ 200 dòng gần nhất. Có nút **Tải lại** và **Xóa nhật ký**.
 - **Xuất YAML**: để HA chạy nền 24/7 (khuyến nghị cho vận hành thật).
 
 ## Lưu ý
