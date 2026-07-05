@@ -33,7 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "inverter_bridge"
 PANEL_URL = "/inverter_bridge/panel.js"
-PANEL_VER = "16"  # tăng mỗi lần sửa panel để chống cache
+PANEL_VER = "17"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
 ENGINE_INTERVAL = timedelta(seconds=10)
@@ -84,6 +84,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "forSec": _legacy.get("forSec", 30),
                 },
             })
+        await store.async_save(data["config"])
+
+    # Di trú: quy tắc cũ 1 điều kiện ('trig') -> 'conds' (đa điều kiện) + 'forSec'.
+    # Đổi tên loại: battery_below -> soc_below; grid_import_start/above -> grid_import.
+    _TYPE_MAP = {
+        "battery_below": "soc_below",
+        "grid_import_start": "grid_import",
+        "grid_import_above": "grid_import",
+    }
+    _changed = False
+    for _rule in data["config"].get("rules", []):
+        if _rule.get("conds"):
+            continue
+        _trig = _rule.pop("trig", None)
+        if _trig is None:
+            continue
+        _typ = _TYPE_MAP.get(_trig.get("type"), _trig.get("type"))
+        _rule["conds"] = [{"type": _typ, "threshold": _trig.get("threshold", 0)}]
+        _rule.setdefault("forSec", _trig.get("forSec", 30))
+        _changed = True
+    if _changed:
         await store.async_save(data["config"])
 
     # Nguồn dữ liệu Modbus TCP (đọc thẳng que WiFi Solis). Mặc định dùng IP .89 nếu
@@ -193,19 +214,54 @@ def _readings(hass: HomeAssistant, cfg: dict) -> dict:
     }
 
 
-def _cond(typ: str, thr: float, r: dict) -> bool:
+def _cond_one(typ: str, thr: float, r: dict) -> bool:
+    """Xét MỘT điều kiện atomic. (Quy tắc có thể AND nhiều điều kiện.)"""
     gi, soc, pv, load, batt = r["grid_import"], r["soc"], r["pv"], r["load"], r["batt"]
-    if typ in ("grid_import_start", "grid_import_above"):
+    if typ == "grid_import":
         return gi is not None and gi > thr
-    if typ == "battery_below":
-        return soc is not None and soc < thr
+    if typ == "grid_export":
+        return gi is not None and gi < -thr
+    if typ == "soc_above":
+        return soc is not None and soc >= thr
+    if typ == "soc_below":
+        return soc is not None and soc <= thr
+    if typ == "battery_charging":          # pin sạc: battery_power dương > thr (W)
+        return batt is not None and batt > thr
     if typ == "battery_discharging":       # pin xả: battery_power âm, độ lớn > thr (W)
         return batt is not None and batt < -thr
+    if typ == "pv_above":
+        return pv is not None and pv >= thr
     if typ == "pv_below":
         return pv is not None and pv < thr
     if typ == "load_above":
         return load is not None and load > thr
+    # tương thích ngược tên cũ:
+    if typ in ("grid_import_start", "grid_import_above"):
+        return gi is not None and gi > thr
+    if typ == "battery_below":
+        return soc is not None and soc <= thr
     return False
+
+
+def _rule_conds(rule: dict) -> list:
+    """Danh sách điều kiện của quy tắc (hỗ trợ cả rule cũ dùng 'trig')."""
+    conds = rule.get("conds")
+    if conds:
+        return conds
+    trig = rule.get("trig")
+    if trig:
+        return [{"type": trig.get("type"), "threshold": trig.get("threshold", 0)}]
+    return []
+
+
+def _cond_all(rule: dict, r: dict) -> bool:
+    """Quy tắc đúng khi THỎA TẤT CẢ điều kiện (AND)."""
+    conds = _rule_conds(rule)
+    if not conds:
+        return False
+    return all(
+        _cond_one(c.get("type"), float(c.get("threshold", 0) or 0), r) for c in conds
+    )
 
 
 def _render_msg(msg: str, r: dict) -> str:
@@ -408,15 +464,17 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
         if not rule.get("enabled"):
             runtime.pop(rid, None)
             continue
-        trig = rule.get("trig", {})
-        cond_on = _cond(trig.get("type"), float(trig.get("threshold", 0) or 0), r)
+        cond_on = _cond_all(rule, r)
         # Điều kiện DỪNG: khi có điện mặt trời (PV phát) -> coi như hết điều kiện,
         # ngừng nhắc và reset để lần sau lại báo.
         if rule.get("stopOnPv") and r["pv"] is not None and r["pv"] > 50:
             cond_on = False
+        for_sec = rule.get("forSec")
+        if for_sec is None:
+            for_sec = (rule.get("trig") or {}).get("forSec", 0)
         res, count = _handle(
             runtime, rid, cond_on,
-            float(trig.get("forSec", 0) or 0),
+            float(for_sec or 0),
             float(rule.get("cooldownSec", 0) or 0),
             int(rule.get("maxRepeats", 1) or 0),
         )

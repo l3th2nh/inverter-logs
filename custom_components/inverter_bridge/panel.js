@@ -173,6 +173,19 @@ select.sel:focus,.num:focus-within{border-color:var(--grid-out)}
 .log-time{font-size:12px;color:var(--faint);margin-left:auto;font-family:'JetBrains Mono',monospace}
 .log-detail{font-size:12.5px;color:var(--muted);margin-top:3px;word-break:break-word}
 .log-vals{font-size:11.5px;color:var(--faint);margin-top:4px;font-family:'JetBrains Mono',monospace;word-break:break-word}
+.cond-list{display:grid;gap:7px}
+.cond-row{display:flex;align-items:center;gap:11px;border:1px solid var(--line-strong);border-radius:12px;padding:11px 12px;cursor:pointer;transition:.18s;color:var(--muted)}
+.cond-row:hover{border-color:var(--line)}
+.cond-row.on{border-color:var(--batt);background:color-mix(in srgb,var(--batt) 8%,var(--panel));color:var(--text)}
+.cond-row svg{width:19px;height:19px;color:var(--faint);flex:none}
+.cond-row.on svg{color:var(--batt)}
+.cond-check{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line-strong);flex:none;display:flex;align-items:center;justify-content:center;color:transparent}
+.cond-check svg{width:14px;height:14px}
+.cond-row.on .cond-check{background:var(--batt);border-color:var(--batt);color:#12261c}
+.cond-meta{flex:1;min-width:0}.cond-meta .ot{font-weight:500;font-size:14px}.cond-meta .od{font-size:12px;color:var(--faint)}
+.cond-thr{display:inline-flex;align-items:center;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:9px;overflow:hidden;flex:none}
+.cond-thr input{width:64px;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;padding:7px 8px;text-align:right;outline:none}
+.cond-thr span{padding:0 9px 0 2px;color:var(--faint);font-size:12px}
 .empty{text-align:center;padding:44px 20px;color:var(--faint)}
 .empty h3{font-family:'Space Grotesk',sans-serif;color:var(--muted);font-weight:600;margin:0 0 8px}
 .empty p{margin:0 0 20px;font-size:14px;line-height:1.55}
@@ -297,10 +310,9 @@ const SHELL = `
   <h3 id="ruleModalTitle">Thêm quy tắc</h3>
   <p class="desc">Chọn điều kiện kích hoạt và thiết bị cần điều khiển.</p>
   <div class="field"><label>Tên quy tắc</label><input type="text" id="ruName" placeholder="VD: Tắt bình nóng lạnh khi lấy lưới" autocomplete="off"></div>
-  <div class="field"><label>KHI — điều kiện kích hoạt</label><div class="pick" id="trigPick"></div></div>
-  <div class="field" id="threshField"><label id="threshLabel">Ngưỡng</label>
-    <div class="num" style="width:100%"><input type="number" id="ruThresh" style="width:100%;text-align:left"><span class="unit" id="threshUnit">W</span></div>
-    <div class="hint" id="threshHint"></div></div>
+  <div class="field"><label>KHI — điều kiện (thỏa TẤT CẢ)</label>
+    <div class="cond-list" id="condList"></div>
+    <div class="hint">Bấm chọn 1 hay nhiều điều kiện. Chọn nhiều = quy tắc chạy khi <b>TẤT CẢ</b> cùng đúng (vd: "SoC ≤ 20%" + "Pin đang xả").</div></div>
   <div class="field"><label>Phải kéo dài</label>
     <div class="seg-in" id="ruForSeg"><button data-v="0">Ngay</button><button data-v="10">10s</button><button data-v="30" class="active">30s</button><button data-v="60">1 phút</button><button data-v="120">2 phút</button></div></div>
   <div class="field"><label>THÌ — hành động</label>
@@ -351,14 +363,23 @@ const SHELL = `
 
 <div class="toasts" id="toasts"></div>`;
 
-const TRIGGERS = {
-  grid_import_start:{ label:'Bắt đầu lấy điện lưới', desc:'Chuyển từ tự cấp sang nhập lưới', unit:'W', tlabel:'Ngưỡng bỏ qua nhiễu', def:50, thint:'Chỉ tính là "lấy lưới" khi công suất nhập vượt mức này.' },
-  grid_import_above:{ label:'Công suất nhập lưới vượt', desc:'Nhập từ lưới cao hơn ngưỡng', unit:'W', tlabel:'Công suất nhập trên', def:800, thint:'Dùng khi chỉ muốn cắt tải lúc nhập lưới nhiều.' },
-  battery_below:{ label:'SoC pin xuống dưới', desc:'Pin còn ít hơn ngưỡng', unit:'%', tlabel:'SoC dưới', def:30, thint:'Bảo vệ pin: cắt tải khi pin gần cạn.' },
-  battery_discharging:{ label:'Pin bắt đầu xả', desc:'Pin chuyển sang xả (cấp cho tải)', unit:'W', tlabel:'Công suất xả trên', def:50, thint:'Chỉ tính khi công suất xả vượt mức này (bỏ nhiễu).' },
-  pv_below:{ label:'Điện mặt trời thấp hơn', desc:'PV phát yếu hơn ngưỡng', unit:'W', tlabel:'PV dưới', def:200, thint:'VD: trời tối / cuối ngày.' },
-  load_above:{ label:'Tải tiêu thụ vượt', desc:'Nhà đang dùng nhiều hơn ngưỡng', unit:'W', tlabel:'Tải trên', def:2500, thint:'Cắt bớt thiết bị khi quá tải.' }
+// Điều kiện atomic — quy tắc AND nhiều điều kiện. ic: nhóm icon.
+const CONDS = {
+  grid_import:        { label:'Đang lấy điện lưới',        desc:'Mua từ lưới vượt ngưỡng', unit:'W', def:50,   ic:'grid' },
+  grid_export:        { label:'Đang bán điện lưới',        desc:'Bán lên lưới vượt ngưỡng', unit:'W', def:50,   ic:'grid' },
+  soc_above:          { label:'SoC pin từ mức trở lên',    desc:'Pin ≥ ngưỡng %',          unit:'%', def:80,   ic:'batt' },
+  soc_below:          { label:'SoC pin xuống mức trở xuống',desc:'Pin ≤ ngưỡng %',         unit:'%', def:20,   ic:'batt' },
+  battery_charging:   { label:'Pin đang sạc',              desc:'Công suất sạc vượt ngưỡng', unit:'W', def:50, ic:'batt' },
+  battery_discharging:{ label:'Pin đang xả',               desc:'Công suất xả vượt ngưỡng',  unit:'W', def:50, ic:'batt' },
+  pv_above:           { label:'Điện mặt trời từ mức trở lên',desc:'PV ≥ ngưỡng',            unit:'W', def:1000, ic:'sun' },
+  pv_below:           { label:'Điện mặt trời dưới mức',     desc:'PV < ngưỡng',             unit:'W', def:200,  ic:'sun' },
+  load_above:         { label:'Tải tiêu thụ vượt',         desc:'Nhà dùng nhiều hơn ngưỡng', unit:'W', def:2500, ic:'load' }
 };
+// Đổi tên loại cũ -> mới (cho rule/cache cũ chưa di trú).
+const COND_ALIAS = { battery_below:'soc_below', grid_import_start:'grid_import', grid_import_above:'grid_import' };
+const normType = (t)=> COND_ALIAS[t]||t;
+function condIcon(ic){ return triIcon(ic==='batt'?'battery_below':ic==='sun'?'pv_below':ic==='load'?'load_above':'grid_import_start'); }
+function ruleConds(rule){ return rule.conds || (rule.trig?[{type:rule.trig.type,threshold:rule.trig.threshold}]:[]); }
 
 function icon(n){
   const m={
@@ -518,16 +539,19 @@ class SolarInverterPanel extends HTMLElement {
         wrap.querySelector('#emptyAdd').onclick=()=>openRuleModal(null); return;
       }
       state.rules.forEach(rule=>{
-        const t=TRIGGERS[rule.trig.type], card=document.createElement('div');
+        const card=document.createElement('div');
         card.className='rule'+(rule.enabled?' enabled':'')+(runtime[rule.id]&&runtime[rule.id].armed?' armed':'');
-        const forTxt=rule.trig.forSec>0?' (giữ '+fmtDur(rule.trig.forSec)+')':'';
-        const thTxt=rule.trig.type==='grid_import_start'?'':' <b>'+rule.trig.threshold+' '+t.unit+'</b>';
+        const forSec=rule.forSec!=null?rule.forSec:((rule.trig||{}).forSec||0);
+        const forTxt=forSec>0?' <span style="color:var(--faint)">(giữ '+fmtDur(forSec)+')</span>':'';
+        const condTxt=ruleConds(rule).map(c=>{ const m=CONDS[normType(c.type)];
+          return m?('<b>'+esc(m.label)+'</b> '+c.threshold+(m.unit==='%'?'%':' '+m.unit)):esc(c.type); })
+          .join(' <span style="color:var(--faint)">＋</span> ');
         const devs=rule.entities.map(e=>'<span>'+esc(fmtName(e))+'</span>').join('');
         card.innerHTML='<div class="rule-top"><div class="rule-name">'+esc(rule.name)+'</div>'+
           '<div class="rule-actions"><button class="rk" data-act="edit" title="Sửa">'+icon('pencil')+'</button>'+
           '<button class="rk danger" data-act="del" title="Xóa">'+icon('trash')+'</button></div>'+
           '<div class="switch'+(rule.enabled?' on':'')+'" data-act="toggle" style="margin-left:4px"><div class="knob"></div></div></div>'+
-          '<div class="rule-when"><span class="rule-tag when">KHI</span><div class="rule-body"><b>'+esc(t.label)+'</b>'+thTxt+forTxt+'</div></div>'+
+          '<div class="rule-when"><span class="rule-tag when">KHI</span><div class="rule-body">'+condTxt+forTxt+'</div></div>'+
           '<div class="rule-then"><span class="rule-tag then">THÌ</span><div class="rule-body">'+
           (rule.action==='notify'
             ? '<b>Gửi thông báo</b> <span style="color:var(--muted)">'+esc(rule.notifyService==='persistent_notification.create'?'trong HA':rule.notifyService)+'</span>'
@@ -542,36 +566,43 @@ class SolarInverterPanel extends HTMLElement {
     }
 
     /* ---------- rule editor ---------- */
-    let ruCtx={ rule:null, trig:'grid_import_start', action:'turn_off', entities:new Set(), forSec:30, coolSec:300,
+    let ruCtx={ rule:null, conds:new Map(), action:'turn_off', entities:new Set(), forSec:30, coolSec:300,
       nfService:'persistent_notification.create', nfMessage:'', maxRepeats:1, stopOnPv:false };
     function openRuleModal(rule){
       ruCtx.rule=rule;
       g('ruleModalTitle').textContent=rule?'Sửa quy tắc':'Thêm quy tắc';
       g('ruDelBtn').style.display=rule?'block':'none';
-      ruCtx.trig=rule?rule.trig.type:'grid_import_start';
       ruCtx.action=rule?rule.action:'turn_off';
       ruCtx.entities=new Set(rule?rule.entities:[]);
-      ruCtx.forSec=rule?rule.trig.forSec:30;
+      ruCtx.forSec=rule?(rule.forSec!=null?rule.forSec:((rule.trig||{}).forSec)):30;
+      if(ruCtx.forSec==null) ruCtx.forSec=30;
       ruCtx.coolSec=rule?rule.cooldownSec:300;
       ruCtx.nfService=(rule&&rule.notifyService)||'persistent_notification.create';
       ruCtx.nfMessage=(rule&&rule.notifyMessage)||'';
       ruCtx.maxRepeats=(rule&&rule.maxRepeats!=null)?rule.maxRepeats:1;
       ruCtx.stopOnPv=!!(rule&&rule.stopOnPv);
+      // Nạp điều kiện (hỗ trợ rule cũ dùng 'trig' + đổi tên loại).
+      ruCtx.conds=new Map();
+      (rule?ruleConds(rule):[{type:'soc_below',threshold:CONDS.soc_below.def}]).forEach(c=>{
+        const t=normType(c.type); if(CONDS[t]) ruCtx.conds.set(t, c.threshold); });
       g('ruName').value=rule?rule.name:'';
-      g('ruThresh').value=rule?rule.trig.threshold:TRIGGERS[ruCtx.trig].def;
-      buildTrigPick(); applyTrig(); buildActPick(); buildDevList(); buildNotify();
+      buildCondList(); buildActPick(); buildDevList(); buildNotify();
       setSeg('ruForSeg',ruCtx.forSec); setSeg('ruCoolSeg',ruCtx.coolSec); setSeg('ruRepeatSeg',ruCtx.maxRepeats);
       g('ruStopPvToggle').classList.toggle('on',ruCtx.stopOnPv);
       showModal('ruleModal'); setTimeout(()=>g('ruName').focus(),50);
     }
-    function buildTrigPick(){ const el=g('trigPick'); el.innerHTML='';
-      Object.keys(TRIGGERS).forEach(k=>{ const t=TRIGGERS[k], o=document.createElement('div');
-        o.className='opt'+(k===ruCtx.trig?' sel':'');
-        o.innerHTML=triIcon(k)+'<div><div class="ot">'+t.label+'</div><div class="od">'+t.desc+'</div></div>';
-        o.onclick=()=>{ ruCtx.trig=k; g('ruThresh').value=TRIGGERS[k].def; buildTrigPick(); applyTrig(); }; el.appendChild(o); });
+    function buildCondList(){ const el=g('condList'); el.innerHTML='';
+      Object.keys(CONDS).forEach(key=>{ const c=CONDS[key], on=ruCtx.conds.has(key);
+        const row=document.createElement('div'); row.className='cond-row'+(on?' on':'');
+        row.innerHTML='<div class="cond-check">'+icon('check')+'</div>'+condIcon(c.ic)
+          +'<div class="cond-meta"><div class="ot">'+c.label+'</div><div class="od">'+c.desc+'</div></div>'
+          +'<div class="cond-thr"'+(on?'':' style="display:none"')+'><input type="number" value="'+(on?ruCtx.conds.get(key):c.def)+'"><span>'+c.unit+'</span></div>';
+        const inp=row.querySelector('input');
+        row.onclick=(e)=>{ if(e.target===inp)return; if(ruCtx.conds.has(key))ruCtx.conds.delete(key); else ruCtx.conds.set(key,parseFloat(inp.value)||c.def); buildCondList(); };
+        inp.onclick=(e)=>e.stopPropagation();
+        inp.oninput=()=>{ if(ruCtx.conds.has(key)) ruCtx.conds.set(key, parseFloat(inp.value)||c.def); };
+        el.appendChild(row); });
     }
-    function applyTrig(){ const t=TRIGGERS[ruCtx.trig];
-      g('threshLabel').textContent=t.tlabel; g('threshUnit').textContent=t.unit; g('threshHint').textContent=t.thint; g('threshField').style.display='block'; }
     const ACT_ICON={turn_off:'power',turn_on:'bolt',notify:'bell'};
     function buildActPick(){ qsa('#actPick .opt').forEach(o=>{ o.classList.toggle('sel',o.dataset.a===ruCtx.action);
       o.querySelector('span').innerHTML=icon(ACT_ICON[o.dataset.a]||'bolt'); o.onclick=()=>{ ruCtx.action=o.dataset.a; buildActPick(); }; });
@@ -604,69 +635,63 @@ class SolarInverterPanel extends HTMLElement {
     qsa('#ruRepeatSeg button').forEach(b=>b.onclick=()=>{ ruCtx.maxRepeats=parseInt(b.dataset.v); setSeg('ruRepeatSeg',ruCtx.maxRepeats); });
     g('ruStopPvToggle').onclick=()=>{ ruCtx.stopOnPv=!ruCtx.stopOnPv; g('ruStopPvToggle').classList.toggle('on',ruCtx.stopOnPv); };
     g('ruSaveBtn').onclick=()=>{
-      const name=g('ruName').value.trim()||TRIGGERS[ruCtx.trig].label;
-      const thresh=parseFloat(g('ruThresh').value)||TRIGGERS[ruCtx.trig].def;
+      const conds=[...ruCtx.conds].map(([type,threshold])=>({type,threshold}));
+      if(!conds.length){ toast('alert','bell','Thiếu điều kiện','Hãy chọn ít nhất 1 điều kiện KHI.'); return; }
+      const name=g('ruName').value.trim()||CONDS[conds[0].type].label;
       const data={ name, enabled:true, action:ruCtx.action, entities:[...ruCtx.entities], cooldownSec:ruCtx.coolSec,
         notifyService:ruCtx.nfService, notifyMessage:ruCtx.nfMessage.trim(),
-        maxRepeats:ruCtx.maxRepeats, stopOnPv:ruCtx.stopOnPv,
-        trig:{ type:ruCtx.trig, threshold:thresh, forSec:ruCtx.forSec } };
+        maxRepeats:ruCtx.maxRepeats, stopOnPv:ruCtx.stopOnPv, forSec:ruCtx.forSec, conds };
       if(data.action==='notify' && !data.notifyMessage) data.notifyMessage='Điều kiện "'+name+'" xảy ra lúc {time}.';
-      if(ruCtx.rule) Object.assign(ruCtx.rule,data); else { data.id=rid(); state.rules.push(data); }
+      if(ruCtx.rule){ delete ruCtx.rule.trig; Object.assign(ruCtx.rule,data); } else { data.id=rid(); state.rules.push(data); }
       saveCfg(); renderRules(); closeModal('ruleModal');
     };
     g('ruDelBtn').onclick=()=>{ if(!ruCtx.rule)return; state.rules=state.rules.filter(x=>x.id!==ruCtx.rule.id); delete runtime[ruCtx.rule.id]; saveCfg(); renderRules(); closeModal('ruleModal'); };
 
     /* ---------- engine (chạy khi panel mở) ---------- */
-    function evalCond(type,threshold,r){
+    function evalCondOne(type,threshold,r){ type=normType(type);
       switch(type){
-        case 'grid_import_start': case 'grid_import_above': return { on:r.gridImport!=null&&r.gridImport>threshold, val:r.gridImport };
-        case 'battery_below': return { on:r.soc!=null&&r.soc<threshold, val:r.soc };
-        case 'battery_discharging': return { on:r.batt!=null&&r.batt<-threshold, val:r.batt };
-        case 'pv_below': return { on:r.pv!=null&&r.pv<threshold, val:r.pv };
-        case 'load_above': return { on:r.load!=null&&r.load>threshold, val:r.load };
-      } return { on:false };
+        case 'grid_import': return r.gridImport!=null&&r.gridImport>threshold;
+        case 'grid_export': return r.gridImport!=null&&r.gridImport<-threshold;
+        case 'soc_above': return r.soc!=null&&r.soc>=threshold;
+        case 'soc_below': return r.soc!=null&&r.soc<=threshold;
+        case 'battery_charging': return r.batt!=null&&r.batt>threshold;
+        case 'battery_discharging': return r.batt!=null&&r.batt<-threshold;
+        case 'pv_above': return r.pv!=null&&r.pv>=threshold;
+        case 'pv_below': return r.pv!=null&&r.pv<threshold;
+        case 'load_above': return r.load!=null&&r.load>threshold;
+      } return false;
     }
-    function handleTrigger(key,cfg,r,now,onFire,onReset){
-      let rt=runtime[key]; if(!rt){ rt=runtime[key]={since:0,fired:false,lastFired:0,armed:false}; }
-      const c=evalCond(cfg.type,cfg.threshold,r); rt.armed=c.on&&!rt.fired;
-      if(c.on){ if(!rt.since)rt.since=now;
-        const held=(now-rt.since)>=(cfg.forSec*1000), coolOk=(now-rt.lastFired)>=(cfg.cooldownSec*1000);
-        if(held&&!rt.fired&&coolOk){ rt.fired=true; rt.lastFired=now; onFire&&onFire(); }
-        else if(held&&!rt.fired&&!coolOk){ rt.fired=true; }
-      } else { if(rt.fired&&onReset)onReset(); rt.since=0; rt.fired=false; rt.armed=false; }
-    }
-    // Chi cap nhat hien thi "armed" (dang chuc bắn) - viec BAN THAT do engine
-    // server-side lo (chay nen 24/7), tranh trung lap.
+    function evalRuleOn(rule,r){ const cs=ruleConds(rule); return cs.length>0 && cs.every(c=>evalCondOne(c.type,c.threshold,r)); }
+    // Chỉ cập nhật hiển thị "armed" (đang chực bắn) — việc BẮN THẬT do engine
+    // server-side lo (chạy nền 24/7), tránh trùng lặp.
     function engineTick(){
       const r=readings();
       state.rules.forEach(rule=>{
         const rt=runtime[rule.id]||(runtime[rule.id]={});
-        rt.armed = rule.enabled && evalCond(rule.trig.type, rule.trig.threshold, r).on;
+        rt.armed = rule.enabled && evalRuleOn(rule,r);
       });
       if(!isModalOpen()) renderRules();
     }
 
     /* ---------- YAML ---------- */
-    function gridTrigYaml(threshold,forSec,indent){ const p=' '.repeat(indent);
-      const dir=state.map.gridSign==='import_pos'?('above: '+threshold):('below: -'+threshold);
-      let y=p+'- platform: numeric_state\n'+p+'    entity_id: '+state.map.grid+'\n'+p+'    '+dir+'\n';
-      if(forSec>0) y+=p+'    for:\n'+p+'      seconds: '+forSec+'\n'; return y; }
-    function trigYaml(trig,indent){ const p=' '.repeat(indent), th=trig.threshold, forSec=trig.forSec;
-      if(trig.type==='grid_import_start'||trig.type==='grid_import_above') return gridTrigYaml(th,forSec,indent);
-      let ent,cmp;
-      if(trig.type==='battery_below'){ ent=state.map.soc; cmp='below: '+th; }
-      else if(trig.type==='battery_discharging'){ ent=state.map.batt; cmp='below: -'+th; }
-      else if(trig.type==='pv_below'){ ent=state.map.pv; cmp='below: '+th; }
-      else { ent=state.map.load; cmp='above: '+th; }
-      let y=p+'- platform: numeric_state\n'+p+'    entity_id: '+(ent||'sensor.CHUA_ANH_XA')+'\n'+p+'    '+cmp+'\n';
-      if(forSec>0) y+=p+'    for:\n'+p+'      seconds: '+forSec+'\n'; return y; }
+    function condEntity(type){ type=normType(type); return {grid_import:state.map.grid,grid_export:state.map.grid,
+      soc_above:state.map.soc,soc_below:state.map.soc,battery_charging:state.map.batt,battery_discharging:state.map.batt,
+      pv_above:state.map.pv,pv_below:state.map.pv,load_above:state.map.load}[type]||'sensor.CHUA_ANH_XA'; }
+    function condCmp(type,th){ type=normType(type);
+      if(type==='grid_export'||type==='battery_discharging') return 'below: -'+th;
+      if(type==='soc_below'||type==='pv_below') return 'below: '+th;
+      return 'above: '+th; }   // grid_import, soc_above, battery_charging, pv_above, load_above (>= xấp xỉ >)
     function msgTpl(m){ return (m||'')
       .replace(/\{power\}/g,'{{ (states("'+state.map.grid+'")|float(0))|abs|round(0) }} W')
       .replace(/\{soc\}/g,'{{ states("'+state.map.soc+'") }}%')
       .replace(/\{pv\}/g,state.map.pv?('{{ states("'+state.map.pv+'") }} W'):'–')
       .replace(/\{load\}/g,state.map.load?('{{ states("'+state.map.load+'") }} W'):'–')
       .replace(/\{time\}/g,'{{ now().strftime("%H:%M") }}'); }
-    function ruleYaml(rule){ let y='# === '+rule.name+' ===\n- alias: "'+rule.name.replace(/"/g,'\\"')+'"\n  trigger:\n'+trigYaml(rule.trig,4);
+    function ruleYaml(rule){ const cs=ruleConds(rule);
+      let y='# === '+rule.name+' ===\n- alias: "'+rule.name.replace(/"/g,'\\"')+'"\n';
+      y+='  trigger:\n    - platform: time_pattern\n      seconds: "/30"\n';
+      y+='  condition:\n';
+      cs.forEach(c=>{ y+='    - condition: numeric_state\n      entity_id: '+condEntity(c.type)+'\n      '+condCmp(c.type,c.threshold)+'\n'; });
       if(rule.action==='notify'){
         y+='  action:\n    - service: '+rule.notifyService+'\n      data:\n        title: "'+rule.name.replace(/"/g,'\\"')+'"\n        message: "'+msgTpl(rule.notifyMessage).replace(/"/g,'\\"')+'"\n  mode: single\n';
         return y; }
