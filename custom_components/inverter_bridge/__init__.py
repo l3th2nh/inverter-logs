@@ -116,28 +116,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator = SolisModbusCoordinator(
             hass, host, entry.data.get("port", DEFAULT_PORT)
         )
-        try:
-            await coordinator.async_config_entry_first_refresh()
-        except Exception as err:  # noqa: BLE001  — que chưa sẵn sàng: vẫn cho panel chạy
-            _LOGGER.warning(
-                "Inverter Bridge: chưa đọc được que Modbus %s (%s); panel vẫn chạy. "
-                "Đổi IP ở Cài đặt → Thiết bị & Dịch vụ → Inverter Bridge → Cấu hình.",
-                host, err,
-            )
-            coordinator = None
+        # KHÔNG dùng async_config_entry_first_refresh() ở đây: nếu que Modbus tạm bận
+        # lúc HA khởi động (que chỉ cho 1 kết nối/lúc; kết nối cũ có thể còn treo),
+        # nó sẽ raise -> ta buộc phải bỏ coordinator -> sensor chết đến khi reload.
+        # Dùng async_refresh() (không raise): entity vẫn được tạo, coordinator TỰ THỬ LẠI
+        # mỗi 15s và TỰ HỒI PHỤC khi que rảnh — không cần restart.
+        await coordinator.async_refresh()
+        data["coordinator"] = coordinator
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-        if coordinator is not None:
-            data["coordinator"] = coordinator
-            await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-            # Tự seed/di trú ánh xạ cảm biến cho panel/engine -> zero-config:
-            #  - chưa có map, HOẶC map còn trỏ entity ESP32 cũ (sensor.inverter_bridge_*)
-            #    nay đã chết -> tự chuyển sang sensor.ib_* của Modbus.
-            cur_map = data["config"].get("map") or {}
-            grid_eid = cur_map.get("grid", "") or ""
-            if not cur_map or grid_eid.startswith("sensor.inverter_bridge_"):
-                data["config"]["map"] = dict(DEFAULT_MAP)
-                await store.async_save(data["config"])
+        # Tự seed/di trú ánh xạ cảm biến cho panel/engine -> zero-config:
+        #  - chưa có map, HOẶC map còn trỏ entity ESP32 cũ (sensor.inverter_bridge_*)
+        #    nay đã chết -> tự chuyển sang sensor.ib_* của Modbus.
+        cur_map = data["config"].get("map") or {}
+        grid_eid = cur_map.get("grid", "") or ""
+        if not cur_map or grid_eid.startswith("sensor.inverter_bridge_"):
+            data["config"]["map"] = dict(DEFAULT_MAP)
+            await store.async_save(data["config"])
 
     # Phục vụ file JS của panel (1 lần / phiên HA)
     if not data.get("static_registered"):

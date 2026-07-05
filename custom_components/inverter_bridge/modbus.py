@@ -100,8 +100,17 @@ class SolisModbusCoordinator(DataUpdateCoordinator):
         if self._client is None:
             self._client = AsyncModbusTcpClient(self._host, port=self._port, timeout=5)
         if not self._client.connected:
-            await self._client.connect()
+            try:
+                await self._client.connect()
+            except Exception:  # noqa: BLE001
+                pass
         if not self._client.connected:
+            # Bỏ client hỏng để lần refresh sau tạo kết nối MỚI sạch (tránh kẹt vĩnh viễn).
+            try:
+                self._client.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._client = None
             raise UpdateFailed(f"Không kết nối được que Modbus {self._host}:{self._port}")
         return self._client
 
@@ -109,10 +118,23 @@ class SolisModbusCoordinator(DataUpdateCoordinator):
         try:
             rr = await client.read_input_registers(address=addr, count=count, slave=SLAVE_ID)
         except TypeError:  # pymodbus mới đổi 'slave' -> 'device_id'
-            rr = await client.read_input_registers(address=addr, count=count, device_id=SLAVE_ID)
+            try:
+                rr = await client.read_input_registers(address=addr, count=count, device_id=SLAVE_ID)
+            except Exception:  # noqa: BLE001
+                return None
+        except Exception:  # noqa: BLE001  — mất kết nối/timeout giữa chừng
+            return None
         if rr.isError():
             return None
         return rr.registers
+
+    def _drop_client(self):
+        if self._client is not None:
+            try:
+                self._client.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._client = None
 
     async def _async_update_data(self) -> dict:
         client = await self._ensure_client()
@@ -124,6 +146,8 @@ class SolisModbusCoordinator(DataUpdateCoordinator):
                 val = -val
             out[key] = val
         if all(out.get(key) is None for key, *_ in REGISTERS):
+            # Cả loạt fail -> có thể kết nối hỏng: bỏ client để lần sau nối lại sạch.
+            self._drop_client()
             raise UpdateFailed("Que Modbus không trả về thanh ghi nào")
 
         # Chiều pin (33135: 0=sạc, 1=xả). battery_power/current là ĐỘ LỚN ->
