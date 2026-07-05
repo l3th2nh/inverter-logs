@@ -117,6 +117,8 @@ select.sel:focus,.num:focus-within{border-color:var(--grid-out)}
 .btn.primary{background:var(--text);color:#1a1820;border-color:transparent;font-weight:600}
 .btn.primary:hover{opacity:.9}
 .btn.ghost{background:transparent}
+.btn.danger{background:var(--danger);color:#fff;border-color:transparent;font-weight:600}
+.btn.danger:hover{opacity:.9}
 .btn.tiny{padding:7px 11px;font-size:13px;border-radius:10px}
 .live-chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;padding:7px 12px;border-radius:999px;
   background:var(--panel-2);border:1px solid var(--line);color:var(--muted)}
@@ -361,6 +363,12 @@ const SHELL = `
   <div class="modal-actions"><button class="btn ghost" data-close>Đóng</button><button class="btn primary" id="copyYamlBtn"></button></div>
 </div></div>
 
+<div class="scrim" id="confirmModal" style="z-index:60"><div class="modal" style="max-width:420px">
+  <h3 id="confirmTitle">Xác nhận xóa</h3>
+  <p class="desc" id="confirmMsg"></p>
+  <div class="modal-actions"><button class="btn ghost" data-close>Không</button><button class="btn danger" id="confirmYes">Xóa</button></div>
+</div></div>
+
 <div class="toasts" id="toasts"></div>`;
 
 // Điều kiện atomic — quy tắc AND nhiều điều kiện. ic: nhóm icon.
@@ -559,7 +567,7 @@ class SolarInverterPanel extends HTMLElement {
             : '<b>'+(rule.action==='turn_off'?'Tắt':'Bật')+'</b> '+rule.entities.length+' thiết bị<div class="chiplist">'+devs+'</div>')+
           '</div></div>';
         card.querySelector('[data-act=edit]').onclick=()=>openRuleModal(rule);
-        card.querySelector('[data-act=del]').onclick=()=>{ state.rules=state.rules.filter(x=>x.id!==rule.id); delete runtime[rule.id]; saveCfg(); renderRules(); };
+        card.querySelector('[data-act=del]').onclick=()=>{ askConfirm('Xóa quy tắc "'+rule.name+'"? Hành động này không hoàn tác được.', ()=>{ state.rules=state.rules.filter(x=>x.id!==rule.id); delete runtime[rule.id]; saveCfg(); renderRules(); }); };
         card.querySelector('[data-act=toggle]').onclick=()=>{ rule.enabled=!rule.enabled; delete runtime[rule.id]; saveCfg(); renderRules(); };
         wrap.appendChild(card);
       });
@@ -645,7 +653,7 @@ class SolarInverterPanel extends HTMLElement {
       if(ruCtx.rule){ delete ruCtx.rule.trig; Object.assign(ruCtx.rule,data); } else { data.id=rid(); state.rules.push(data); }
       saveCfg(); renderRules(); closeModal('ruleModal');
     };
-    g('ruDelBtn').onclick=()=>{ if(!ruCtx.rule)return; state.rules=state.rules.filter(x=>x.id!==ruCtx.rule.id); delete runtime[ruCtx.rule.id]; saveCfg(); renderRules(); closeModal('ruleModal'); };
+    g('ruDelBtn').onclick=()=>{ if(!ruCtx.rule)return; const rl=ruCtx.rule; askConfirm('Xóa quy tắc "'+rl.name+'"? Hành động này không hoàn tác được.', ()=>{ state.rules=state.rules.filter(x=>x.id!==rl.id); delete runtime[rl.id]; saveCfg(); renderRules(); closeModal('ruleModal'); }); };
 
     /* ---------- engine (chạy khi panel mở) ---------- */
     function evalCondOne(type,threshold,r){ type=normType(type);
@@ -777,6 +785,10 @@ class SolarInverterPanel extends HTMLElement {
     function isModalOpen(){ return !!root.querySelector('.scrim.show'); }
     qsa('[data-close]').forEach(b=>b.onclick=()=>b.closest('.scrim').classList.remove('show'));
     qsa('.scrim').forEach(s=>s.addEventListener('click',e=>{ if(e.target===s)s.classList.remove('show'); }));
+    // Hộp xác nhận (dùng chung): askConfirm(nội dung, hàm-nếu-đồng-ý).
+    let _confirmCb=null;
+    function askConfirm(msg,onYes){ g('confirmMsg').textContent=msg; _confirmCb=onYes; showModal('confirmModal'); }
+    g('confirmYes').onclick=()=>{ const cb=_confirmCb; _confirmCb=null; closeModal('confirmModal'); if(cb)cb(); };
 
     /* ---------- bindings ---------- */
     g('menuBtn').onclick=()=>self.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));
