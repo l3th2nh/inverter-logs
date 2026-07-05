@@ -33,7 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "inverter_bridge"
 PANEL_URL = "/inverter_bridge/panel.js"
-PANEL_VER = "14"  # tăng mỗi lần sửa panel để chống cache
+PANEL_VER = "15"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
 ENGINE_INTERVAL = timedelta(seconds=10)
@@ -187,11 +187,13 @@ def _readings(hass: HomeAssistant, cfg: dict) -> dict:
 
 
 def _cond(typ: str, thr: float, r: dict) -> bool:
-    gi, soc, pv, load = r["grid_import"], r["soc"], r["pv"], r["load"]
+    gi, soc, pv, load, batt = r["grid_import"], r["soc"], r["pv"], r["load"], r["batt"]
     if typ in ("grid_import_start", "grid_import_above"):
         return gi is not None and gi > thr
     if typ == "battery_below":
         return soc is not None and soc < thr
+    if typ == "battery_discharging":       # pin xả: battery_power âm, độ lớn > thr (W)
+        return batt is not None and batt < -thr
     if typ == "pv_below":
         return pv is not None and pv < thr
     if typ == "load_above":

@@ -353,6 +353,7 @@ const TRIGGERS = {
   grid_import_start:{ label:'Bắt đầu lấy điện lưới', desc:'Chuyển từ tự cấp sang nhập lưới', unit:'W', tlabel:'Ngưỡng bỏ qua nhiễu', def:50, thint:'Chỉ tính là "lấy lưới" khi công suất nhập vượt mức này.' },
   grid_import_above:{ label:'Công suất nhập lưới vượt', desc:'Nhập từ lưới cao hơn ngưỡng', unit:'W', tlabel:'Công suất nhập trên', def:800, thint:'Dùng khi chỉ muốn cắt tải lúc nhập lưới nhiều.' },
   battery_below:{ label:'SoC pin xuống dưới', desc:'Pin còn ít hơn ngưỡng', unit:'%', tlabel:'SoC dưới', def:30, thint:'Bảo vệ pin: cắt tải khi pin gần cạn.' },
+  battery_discharging:{ label:'Pin bắt đầu xả', desc:'Pin chuyển sang xả (cấp cho tải)', unit:'W', tlabel:'Công suất xả trên', def:50, thint:'Chỉ tính khi công suất xả vượt mức này (bỏ nhiễu).' },
   pv_below:{ label:'Điện mặt trời thấp hơn', desc:'PV phát yếu hơn ngưỡng', unit:'W', tlabel:'PV dưới', def:200, thint:'VD: trời tối / cuối ngày.' },
   load_above:{ label:'Tải tiêu thụ vượt', desc:'Nhà đang dùng nhiều hơn ngưỡng', unit:'W', tlabel:'Tải trên', def:2500, thint:'Cắt bớt thiết bị khi quá tải.' }
 };
@@ -380,7 +381,7 @@ function triIcon(k){
   const grid=A+'<path d="M7 21 10.5 4h3L17 21"/><path d="M5.5 21h4M14.5 21h4"/><path d="M12 4V2"/><path d="M6 7h12M8 10h8"/><path d="M9.6 13l4.8 4M14.4 13l-4.8 4"/></svg>';
   const batt=A+'<rect x="7" y="6" width="10" height="15.4" rx="2.2"/><path d="M9.8 2.6h4.4v3.4H9.8z"/><path d="M12.7 9.4 10.4 13.3h3.1l-2.2 3.9" stroke-width="1.4"/></svg>';
   const load=A+'<path d="M3.6 11.3 12 4l8.4 7.3"/><path d="M5.9 10.2v9.3h12.2v-9.3"/><path d="M10 19.5V15h4v4.5"/></svg>';
-  return { grid_import_start:grid, grid_import_above:grid, battery_below:batt, pv_below:sun, load_above:load }[k]||grid;
+  return { grid_import_start:grid, grid_import_above:grid, battery_below:batt, battery_discharging:batt, pv_below:sun, load_above:load }[k]||grid;
 }
 function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -618,6 +619,7 @@ class SolarInverterPanel extends HTMLElement {
       switch(type){
         case 'grid_import_start': case 'grid_import_above': return { on:r.gridImport!=null&&r.gridImport>threshold, val:r.gridImport };
         case 'battery_below': return { on:r.soc!=null&&r.soc<threshold, val:r.soc };
+        case 'battery_discharging': return { on:r.batt!=null&&r.batt<-threshold, val:r.batt };
         case 'pv_below': return { on:r.pv!=null&&r.pv<threshold, val:r.pv };
         case 'load_above': return { on:r.load!=null&&r.load>threshold, val:r.load };
       } return { on:false };
@@ -651,6 +653,7 @@ class SolarInverterPanel extends HTMLElement {
       if(trig.type==='grid_import_start'||trig.type==='grid_import_above') return gridTrigYaml(th,forSec,indent);
       let ent,cmp;
       if(trig.type==='battery_below'){ ent=state.map.soc; cmp='below: '+th; }
+      else if(trig.type==='battery_discharging'){ ent=state.map.batt; cmp='below: -'+th; }
       else if(trig.type==='pv_below'){ ent=state.map.pv; cmp='below: '+th; }
       else { ent=state.map.load; cmp='above: '+th; }
       let y=p+'- platform: numeric_state\n'+p+'    entity_id: '+(ent||'sensor.CHUA_ANH_XA')+'\n'+p+'    '+cmp+'\n';
