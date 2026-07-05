@@ -33,12 +33,13 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "inverter_bridge"
 PANEL_URL = "/inverter_bridge/panel.js"
-PANEL_VER = "15"  # tăng mỗi lần sửa panel để chống cache
+PANEL_VER = "16"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
 ENGINE_INTERVAL = timedelta(seconds=10)
 PLATFORMS = [Platform.SENSOR]
-LOG_LIMIT = 200  # số dòng nhật ký giữ lại
+LOG_LIMIT = 200   # số dòng nhật ký quy tắc giữ lại
+SNAP_LIMIT = 500  # số bản ghi giá trị cảm biến giữ lại
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -55,6 +56,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         logs_store = Store(hass, 1, f"{DOMAIN}_logs")
         data["logs_store"] = logs_store
         data["logs"] = await logs_store.async_load() or []
+    # Nhật ký giá trị cảm biến (time-series nhẹ, theo sự kiện).
+    if "snaps_store" not in data:
+        snaps_store = Store(hass, 1, f"{DOMAIN}_snaps")
+        data["snaps_store"] = snaps_store
+        data["snaps"] = await snaps_store.async_load() or []
 
     # Di trú: tab "Thông báo" cũ -> 1 quy tắc notify (thống nhất vào Tự động hóa,
     # không mất thông báo đang bật). Chạy 1 lần vì sau đó 'notif' bị xóa khỏi config.
@@ -146,6 +152,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         websocket_api.async_register_command(hass, ws_save)
         websocket_api.async_register_command(hass, ws_logs)
         websocket_api.async_register_command(hass, ws_logs_clear)
+        websocket_api.async_register_command(hass, ws_snaps)
 
     # Engine chạy nền định kỳ (chỉ đăng ký 1 lần)
     if not data.get("engine_unsub"):
@@ -307,6 +314,55 @@ def _append_log(hass: HomeAssistant, entry: dict) -> None:
         store.async_delay_save(lambda: data.get("logs", []), 3)
 
 
+def _snap_vals(r: dict) -> dict:
+    """Ảnh chụp gọn các giá trị engine dùng để xét điều kiện (đúng thứ trigger thấy)."""
+    def rnd(v):
+        return None if v is None else round(v)
+    return {
+        "grid": rnd(r["grid_import"]),   # + = mua, - = bán
+        "pv": rnd(r["pv"]),
+        "load": rnd(r["load"]),
+        "batt": rnd(r["batt"]),          # + = sạc, - = xả
+        "soc": rnd(r["soc"]),
+    }
+
+
+def _significant(a: dict, b: dict) -> bool:
+    """Đổi đáng kể để đáng ghi 1 bản ghi mới (tránh phình log lúc giá trị đứng yên)."""
+    if b is None:
+        return True
+    for k in ("grid", "pv", "load", "batt"):
+        av, bv = a.get(k), b.get(k)
+        if (av is None) != (bv is None):
+            return True
+        if av is not None and bv is not None and abs(av - bv) >= 100:
+            return True
+    av, bv = a.get("soc"), b.get("soc")
+    if (av is None) != (bv is None):
+        return True
+    if av is not None and bv is not None and abs(av - bv) >= 1:
+        return True
+    return False
+
+
+def _maybe_snapshot(hass: HomeAssistant, r: dict) -> None:
+    """Ghi giá trị cảm biến khi đổi đáng kể HOẶC mỗi ~60s (heartbeat). Bền + giới hạn."""
+    data = hass.data.setdefault(DOMAIN, {})
+    snaps = data.setdefault("snaps", [])
+    vals = _snap_vals(r)
+    last = snaps[0] if snaps else None
+    now = time.monotonic()
+    last_mono = data.get("snap_mono", 0.0)
+    last_vals = {k: last.get(k) for k in vals} if last else None
+    if last is None or (now - last_mono) >= 60 or _significant(vals, last_vals):
+        snaps.insert(0, {"ts": dt_util.now().isoformat(), **vals})
+        del snaps[SNAP_LIMIT:]
+        data["snap_mono"] = now
+        store = data.get("snaps_store")
+        if store is not None:
+            store.async_delay_save(lambda: data.get("snaps", []), 5)
+
+
 def _handle(runtime: dict, key: str, on: bool, for_sec: float, cool_sec: float, max_count: int):
     """Trả 'fire' khi cần bắn. Bắn lần đầu khi điều kiện giữ đủ for_sec, rồi LẶP mỗi
     cool_sec, tối đa max_count lần (max_count=0 => không giới hạn). Khi điều kiện hết
@@ -339,6 +395,9 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
     cfg = data.get("config") or {}
     runtime = data.setdefault("runtime", {})
     r = _readings(hass, cfg)
+
+    # Ghi giá trị cảm biến (để theo dõi/tinh chỉnh trigger).
+    _maybe_snapshot(hass, r)
 
     # Quy tắc tự động (tắt/bật thiết bị hoặc gửi thông báo).
     # (Tab "Thông báo" riêng đã bỏ; thông báo lấy lưới nay là 1 quy tắc.)
@@ -389,6 +448,7 @@ async def _engine_evaluate(hass: HomeAssistant) -> None:
                 "ok": ok,
                 "detail": detail,
                 "n": count,
+                "vals": _snap_vals(r),   # giá trị cảm biến lúc kích hoạt
             })
 
 
@@ -501,6 +561,12 @@ async def ws_save(hass: HomeAssistant, connection, msg) -> None:
 @websocket_api.async_response
 async def ws_logs(hass: HomeAssistant, connection, msg) -> None:
     connection.send_result(msg["id"], hass.data.get(DOMAIN, {}).get("logs", []))
+
+
+@websocket_api.websocket_command({vol.Required("type"): "inverter_bridge/snapshots"})
+@websocket_api.async_response
+async def ws_snaps(hass: HomeAssistant, connection, msg) -> None:
+    connection.send_result(msg["id"], hass.data.get(DOMAIN, {}).get("snaps", []))
 
 
 @websocket_api.websocket_command({vol.Required("type"): "inverter_bridge/logs_clear"})

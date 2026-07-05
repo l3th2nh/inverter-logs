@@ -172,6 +172,7 @@ select.sel:focus,.num:focus-within{border-color:var(--grid-out)}
 .log-act{font-size:11px;color:var(--muted);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
 .log-time{font-size:12px;color:var(--faint);margin-left:auto;font-family:'JetBrains Mono',monospace}
 .log-detail{font-size:12.5px;color:var(--muted);margin-top:3px;word-break:break-word}
+.log-vals{font-size:11.5px;color:var(--faint);margin-top:4px;font-family:'JetBrains Mono',monospace;word-break:break-word}
 .empty{text-align:center;padding:44px 20px;color:var(--faint)}
 .empty h3{font-family:'Space Grotesk',sans-serif;color:var(--muted);font-weight:600;margin:0 0 8px}
 .empty p{margin:0 0 20px;font-size:14px;line-height:1.55}
@@ -285,6 +286,7 @@ const SHELL = `
   <div class="panel-view" id="panel-logs">
     <div class="rules-head"><h2>Nhật ký hoạt động</h2><span class="meta" id="logsMeta"></span>
       <button class="btn tiny" id="logsRefreshBtn"></button><button class="btn tiny" id="logsClearBtn"></button></div>
+    <div class="seg-in" id="logSubSeg" style="max-width:340px;margin-bottom:12px"><button data-l="rules" class="active">Quy tắc chạy</button><button data-l="sensor">Giá trị cảm biến</button></div>
     <div id="logsList"></div>
     <div class="hint-box" style="margin-top:4px"><span class="hb-ic"></span>
       <div>Ghi lại mỗi lần quy tắc <b>chạy</b>: thời điểm, thành công/thất bại và chi tiết. Do engine nền ghi (kể cả khi đóng trình duyệt), giữ tối đa 200 dòng gần nhất.</div></div>
@@ -679,15 +681,16 @@ class SolarInverterPanel extends HTMLElement {
     function fallbackCopy(txt,cb){ const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e){} ta.remove(); cb&&cb(); }
 
     /* ---------- logs (nhật ký hoạt động) ---------- */
-    let logsCache=[];
-    async function fetchLogs(){
-      try{ logsCache=(await self._hass.connection.sendMessagePromise({type:'inverter_bridge/logs'}))||[]; }
-      catch(e){ logsCache=[]; }
-    }
+    let logsCache=[], snapsCache=[], logMode='rules';
+    async function wsGet(type){ try{ return (await self._hass.connection.sendMessagePromise({type}))||[]; }catch(e){ return []; } }
     function fmtLogTime(iso){ try{ const d=new Date(iso); return d.toLocaleTimeString('vi-VN')+' · '+d.toLocaleDateString('vi-VN'); }catch(e){ return iso||''; } }
+    function fmtHM(iso){ try{ return new Date(iso).toLocaleTimeString('vi-VN'); }catch(e){ return ''; } }
     function actLabel(a){ return a==='notify'?'Gửi thông báo':(a==='turn_on'?'Bật thiết bị':'Tắt thiết bị'); }
-    function renderLogs(){
-      const wrap=g('logsList'); if(!wrap) return;
+    function valsLine(v){ if(!v) return ''; const p=(x,u)=> x==null?'–':(Math.round(x)+u);
+      const bt = v.batt==null?'pin –':(v.batt<0?('xả '+Math.abs(Math.round(v.batt))+'W'):(v.batt>0?('sạc '+Math.round(v.batt)+'W'):'pin nghỉ'));
+      return 'SoC '+p(v.soc,'%')+' · '+bt+' · lưới '+p(v.grid,'W')+' · PV '+p(v.pv,'W')+' · tải '+p(v.load,'W'); }
+    function renderRuleLogs(){
+      const wrap=g('logsList');
       g('logsMeta').textContent=logsCache.length?(logsCache.length+' dòng'):'';
       if(!logsCache.length){ wrap.innerHTML='<div class="empty"><h3>Chưa có nhật ký</h3><p>Khi một quy tắc kích hoạt, kết quả (thành công/thất bại) sẽ hiện ở đây.</p></div>'; return; }
       wrap.innerHTML=logsCache.map(e=>{ const ok=!!e.ok;
@@ -695,10 +698,26 @@ class SolarInverterPanel extends HTMLElement {
           '<div class="log-body"><div class="log-top"><b>'+esc(e.rule||'')+'</b>'+
           '<span class="log-act">'+esc(actLabel(e.action)+(e.n?(' · lần '+e.n):''))+'</span>'+
           '<span class="log-time">'+esc(fmtLogTime(e.ts))+'</span></div>'+
-          '<div class="log-detail">'+esc(e.detail||'')+'</div></div></div>';
+          '<div class="log-detail">'+esc(e.detail||'')+'</div>'+
+          (e.vals?'<div class="log-vals">'+esc(valsLine(e.vals))+'</div>':'')+'</div></div>';
       }).join('');
     }
-    async function refreshLogs(){ await fetchLogs(); renderLogs(); }
+    function renderSnapLogs(){
+      const wrap=g('logsList');
+      g('logsMeta').textContent=snapsCache.length?(snapsCache.length+' bản ghi'):'';
+      if(!snapsCache.length){ wrap.innerHTML='<div class="empty"><h3>Chưa có dữ liệu</h3><p>Giá trị cảm biến được ghi khi thay đổi đáng kể (≥100W hoặc ≥1% SoC) hoặc mỗi 60s.</p></div>'; return; }
+      wrap.innerHTML=snapsCache.map(s=>
+        '<div class="log-item"><div class="log-ic" style="background:none;color:var(--faint)">•</div>'+
+        '<div class="log-body"><div class="log-top"><b>'+esc(fmtHM(s.ts))+'</b>'+
+        '<span class="log-time">'+esc((()=>{try{return new Date(s.ts).toLocaleDateString('vi-VN');}catch(e){return'';}})())+'</span></div>'+
+        '<div class="log-vals">'+esc(valsLine(s))+'</div></div></div>').join('');
+    }
+    function renderLogView(){ g('logsClearBtn').style.display=(logMode==='rules')?'':'none';
+      if(logMode==='rules') renderRuleLogs(); else renderSnapLogs(); }
+    async function refreshLogs(){
+      if(logMode==='rules') logsCache=await wsGet('inverter_bridge/logs');
+      else snapsCache=await wsGet('inverter_bridge/snapshots');
+      renderLogView(); }
 
     /* ---------- toasts ---------- */
     function toast(kind,ic,title,msg){ const wrap=g('toasts'), el=document.createElement('div'); el.className='toast '+kind;
@@ -740,7 +759,8 @@ class SolarInverterPanel extends HTMLElement {
     g('rulesYamlBtn').onclick=()=>openYaml();
     g('addRuleBtn').onclick=()=>openRuleModal(null);
     g('logsRefreshBtn').onclick=refreshLogs;
-    g('logsClearBtn').onclick=async()=>{ try{ await self._hass.connection.sendMessagePromise({type:'inverter_bridge/logs_clear'}); }catch(e){} logsCache=[]; renderLogs(); };
+    g('logsClearBtn').onclick=async()=>{ try{ await self._hass.connection.sendMessagePromise({type:'inverter_bridge/logs_clear'}); }catch(e){} logsCache=[]; renderLogView(); };
+    qsa('#logSubSeg button').forEach(b=>b.onclick=()=>{ qsa('#logSubSeg button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); logMode=b.dataset.l; refreshLogs(); });
     qsa('#seg button').forEach(b=>b.onclick=()=>{ qsa('#seg button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
       qsa('.panel-view').forEach(p=>p.classList.remove('show')); g('panel-'+b.dataset.p).classList.add('show');
       if(b.dataset.p==='logs') refreshLogs(); });

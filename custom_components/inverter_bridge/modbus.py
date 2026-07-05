@@ -49,13 +49,15 @@ REGISTERS = [
     ("battery_discharge_today","Battery Discharge Today",33167, 1, "U16", 0.1, "kWh", SensorDeviceClass.ENERGY, _T),
 ]
 
-# Đảo dấu để theo quy ước trực quan mà panel/engine/automations dùng:
-#  - battery_power/current: DƯƠNG = SẠC (nạp), ÂM = XẢ.
-#    (Solis trả DƯƠNG khi ĐANG XẢ — kiểm chứng: PV=0, lưới=0, tải>0 mà dương + SOC tụt.)
-#  - grid_power: DƯƠNG = MUA (nhập từ lưới), ÂM = BÁN (phát lên lưới).
-#    (Solis/đồng hồ trả ÂM khi ĐANG MUA — kiểm chứng: đêm PV=0, pin nghỉ, tải 512W mà
-#     lưới hiển thị "bán" 552W -> thực chất đang MUA 552W = tải + ~40W biến tần tự dùng.)
-INVERT_SIGN = {"battery_power", "battery_current", "grid_power"}
+# grid_power: DƯƠNG = MUA (nhập từ lưới), ÂM = BÁN. Solis/đồng hồ trả ÂM khi ĐANG MUA
+# (giá trị CÓ DẤU thật) -> đảo dấu ở đây. (Kiểm chứng: đêm PV=0, pin nghỉ, tải 512W mà
+#  lưới hiển thị "bán" 552W -> thực chất MUA 552W = tải + ~40W biến tần tự dùng.)
+INVERT_SIGN = {"grid_power"}
+
+# battery_power/current KHÔNG đảo ở đây: chúng là ĐỘ LỚN (magnitude). Chiều sạc/xả lấy từ
+# thanh ghi 33135 (0=sạc, 1=xả) -> áp dấu abs*chiều trong coordinator: DƯƠNG=sạc, ÂM=xả.
+BATTERY_DIR_REG = 33135
+BATTERY_SIGNED = ("battery_power", "battery_current")
 
 # Ánh xạ mặc định cho panel/engine (tự seed để không phải cấu hình tay).
 DEFAULT_MAP = {
@@ -121,8 +123,18 @@ class SolisModbusCoordinator(DataUpdateCoordinator):
             if val is not None and key in INVERT_SIGN:
                 val = -val
             out[key] = val
-        if all(v is None for v in out.values()):
+        if all(out.get(key) is None for key, *_ in REGISTERS):
             raise UpdateFailed("Que Modbus không trả về thanh ghi nào")
+
+        # Chiều pin (33135: 0=sạc, 1=xả). battery_power/current là ĐỘ LỚN ->
+        # áp dấu: DƯƠNG=sạc, ÂM=xả. Dùng abs() để bền vững dù raw có/không dấu.
+        dir_regs = await self._read(client, BATTERY_DIR_REG, 1)
+        if dir_regs is not None:
+            out["battery_direction"] = dir_regs[0]        # 0=sạc, 1=xả (để theo dõi)
+            sign = 1 if dir_regs[0] == 0 else -1
+            for k in BATTERY_SIGNED:
+                if out.get(k) is not None:
+                    out[k] = round(abs(out[k]) * sign, 2)
         return out
 
     async def async_shutdown(self) -> None:
