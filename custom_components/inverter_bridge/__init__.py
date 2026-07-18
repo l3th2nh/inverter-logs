@@ -36,6 +36,7 @@ PANEL_URL = "/inverter_bridge/panel.js"
 PANEL_VER = "19"  # tăng mỗi lần sửa panel để chống cache
 PANEL_URL_V = f"{PANEL_URL}?v={PANEL_VER}"
 PANEL_PATH = "he-dien-mat-troi"
+PANEL_DEEPLINK = f"/{PANEL_PATH}"  # bấm thông báo -> mở panel này (mobile app)
 ENGINE_INTERVAL = timedelta(seconds=10)
 PLATFORMS = [Platform.SENSOR]
 LOG_LIMIT = 200   # số dòng nhật ký quy tắc giữ lại
@@ -304,16 +305,21 @@ async def _send_notification(
     - notify.send_message trần / lỗi -> fallback về persistent (kèm ghi chú) để không mất báo.
     """
     nid = f"inverter_bridge_rule_{rid}"
+    # Deep-link để bấm thông báo mở thẳng panel "Hệ điện mặt trời":
+    # iOS companion dùng data.url, Android dùng data.clickAction.
+    deeplink = {"url": PANEL_DEEPLINK, "clickAction": PANEL_DEEPLINK}
     if service.startswith("persistent_notification"):
         await _persistent(hass, title, message, nid)
         return True, "Đã hiện thông báo trong HA"
     domain, _, name = service.partition(".")
     try:
-        # notify.<x> kiểu cũ (không phải send_message)
+        # notify.<x> kiểu cũ (mobile_app_x...) -> nhận {title, message, data}
         if domain == "notify" and name and name != "send_message" \
                 and hass.services.has_service("notify", name):
             await hass.services.async_call(
-                "notify", name, {"title": title, "message": message}, blocking=True
+                "notify", name,
+                {"title": title, "message": message, "data": deeplink},
+                blocking=True,
             )
             return True, f"Đã gửi qua {service}"
         # notify entity qua send_message + target (mobile_app trên HA mới)
